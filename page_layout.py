@@ -8,6 +8,14 @@ from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
 
 VOL_MULTIPLIER = {"Calm": 0.8, "Normal": 1.0, "Stressed": 1.4}
+PAGE_CONTEXT_BY_STEP = {
+    1: "mechanics",
+    2: "parity",
+    3: "funding",
+    4: "frictions",
+    5: "hedge",
+    6: "stress",
+}
 
 
 def render_lesson(
@@ -21,7 +29,7 @@ def render_lesson(
     calc_text: str,
 ) -> None:
     st.set_page_config(page_title=title, page_icon="📘", layout="wide")
-    render_global_shell()
+    render_global_shell(page_context=PAGE_CONTEXT_BY_STEP.get(step_index, "overview"))
     st.session_state.suggested_page = LEARNING_PATH[step_index]
 
     st.title(title)
@@ -55,6 +63,23 @@ def render_lesson(
 
     st.markdown("### Dynamic explanation")
     st.write(explanation_fn(frame))
+    latest_narrative = st.session_state.get("latest_transition_narrative")
+    if isinstance(latest_narrative, dict):
+        with st.expander("Shared state-transition narrative", expanded=False):
+            st.markdown("#### Changed inputs")
+            if latest_narrative.get("changed_inputs"):
+                for change in latest_narrative["changed_inputs"]:
+                    st.write(f"- `{change['name']}`: {change['previous']} → {change['current']}")
+            else:
+                st.write("- No included inputs changed.")
+            st.markdown("#### Transmission mechanism / formula")
+            st.write(latest_narrative.get("transmission_mechanism", ""))
+            st.markdown("#### Economic channel")
+            st.write(latest_narrative.get("economic_channel", ""))
+            st.markdown("#### Role interpretation")
+            st.write(latest_narrative.get("role_interpretation", ""))
+            st.markdown("#### Inspect next")
+            st.write(latest_narrative.get("inspect_next", ""))
     learning_hint(
         "Interpretation changes by regime: in stressed markets, basis persistence often dominates simple carry "
         "comparisons."

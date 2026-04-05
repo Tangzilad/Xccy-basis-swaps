@@ -5,7 +5,7 @@ import streamlit as st
 from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
 st.set_page_config(page_title="XCCY Basis Learning Lab", page_icon="📘", layout="wide")
-render_global_shell()
+render_global_shell(page_context="overview")
 st.session_state.suggested_page = LEARNING_PATH[0]
 
 st.title("XCCY Basis Learning Lab")
@@ -30,6 +30,24 @@ learning_hint(
     "In Learning mode, each page highlights why the metric matters, what changes with regime shifts, and where model "
     "risk enters decision-making."
 )
+
+latest_narrative = st.session_state.get("latest_transition_narrative")
+if isinstance(latest_narrative, dict):
+    st.markdown("### Shared state-transition narrative")
+    st.markdown("#### Changed inputs")
+    if latest_narrative.get("changed_inputs"):
+        for change in latest_narrative["changed_inputs"]:
+            st.write(f"- `{change['name']}`: {change['previous']} → {change['current']}")
+    else:
+        st.write("- No included inputs changed.")
+    st.markdown("#### Transmission mechanism / formula")
+    st.write(latest_narrative.get("transmission_mechanism", ""))
+    st.markdown("#### Economic channel")
+    st.write(latest_narrative.get("economic_channel", ""))
+    st.markdown("#### Role interpretation")
+    st.write(latest_narrative.get("role_interpretation", ""))
+    st.markdown("#### Inspect next")
+    st.write(latest_narrative.get("inspect_next", ""))
 
 with st.expander("How to navigate"):
     st.write(
