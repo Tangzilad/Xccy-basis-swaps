@@ -2,11 +2,15 @@ from __future__ import annotations
 
 import streamlit as st
 
-from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
+from src.state.market_state import snapshot_for_narrative
+from ui_shell import LEARNING_PATH, ensure_market_state_initialized, learning_hint, render_global_shell
 
 st.set_page_config(page_title="XCCY Basis Learning Lab", page_icon="📘", layout="wide")
-render_global_shell(page_context="overview")
+ensure_market_state_initialized()
+render_global_shell()
 st.session_state.suggested_page = LEARNING_PATH[0]
+
+state_snapshot = snapshot_for_narrative(st.session_state["market_state"])
 
 st.title("XCCY Basis Learning Lab")
 st.caption("A guided multipage walkthrough from foundations to strategy stress testing.")
@@ -19,8 +23,8 @@ with summary_col:
         "intuition from mechanics to implementation."
     )
 with status_col:
-    st.metric("Mode", st.session_state.mode)
-    st.metric("Basis", f"{st.session_state.cross_currency_basis_bps} bps")
+    st.metric("Mode", str(state_snapshot["mode"]))
+    st.metric("Basis", f"{state_snapshot['cross_currency_basis_bps']:.0f} bps")
 
 st.markdown("### Suggested learning path")
 for step in LEARNING_PATH:
@@ -31,23 +35,25 @@ learning_hint(
     "risk enters decision-making."
 )
 
-latest_narrative = st.session_state.get("latest_transition_narrative")
-if isinstance(latest_narrative, dict):
-    st.markdown("### Shared state-transition narrative")
-    st.markdown("#### Changed inputs")
-    if latest_narrative.get("changed_inputs"):
-        for change in latest_narrative["changed_inputs"]:
-            st.write(f"- `{change['name']}`: {change['previous']} → {change['current']}")
-    else:
-        st.write("- No included inputs changed.")
-    st.markdown("#### Transmission mechanism / formula")
-    st.write(latest_narrative.get("transmission_mechanism", ""))
-    st.markdown("#### Economic channel")
-    st.write(latest_narrative.get("economic_channel", ""))
-    st.markdown("#### Role interpretation")
-    st.write(latest_narrative.get("role_interpretation", ""))
-    st.markdown("#### Inspect next")
-    st.write(latest_narrative.get("inspect_next", ""))
+st.markdown("### Base vs stressed snapshots")
+base_snapshot = st.session_state.market_state["base_snapshot"]
+stressed_snapshot = st.session_state.market_state["stressed_snapshot"]
+
+c1, c2, c3 = st.columns(3)
+c1.metric("Scenario", st.session_state.market_state.get("scenario", "none"))
+c2.metric("Base spot", f"{base_snapshot['spot_fx']:.2f}")
+c3.metric("Stressed spot", f"{stressed_snapshot['spot_fx']:.2f}")
+
+stress_table = make_stress_table(base_snapshot, stressed_snapshot)
+st.dataframe(stress_table, use_container_width=True)
+
+lhs, rhs = st.columns(2)
+with lhs:
+    st.caption("Base market forwards")
+    st.dataframe(base_snapshot["market_forward_df"], use_container_width=True)
+with rhs:
+    st.caption("Stressed market forwards")
+    st.dataframe(stressed_snapshot["market_forward_df"], use_container_width=True)
 
 with st.expander("How to navigate"):
     st.write(
