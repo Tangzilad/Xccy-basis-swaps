@@ -2,6 +2,16 @@ from __future__ import annotations
 
 import streamlit as st
 
+from src.controllers.market_state_controller import (
+    SCENARIO_LIBRARY,
+    apply_state_scenario,
+    build_custom_scenario,
+    clip_regime,
+    ensure_market_state,
+    regenerate_market_state,
+    summarize_for_shell,
+)
+
 LEARNING_PATH = [
     "1. Start here",
     "2. XCCY mechanics",
@@ -13,18 +23,52 @@ LEARNING_PATH = [
 ]
 
 
+SCENARIO_OPTIONS = {
+    "none": "No scenario",
+    **{name: name.replace("_", " ").title() for name in SCENARIO_LIBRARY},
+    "custom_parallel": "Custom Parallel",
+    "custom_steepener": "Custom Steepener",
+    "custom_flattener": "Custom Flattener",
+}
+
+
+def _sync_legacy_fields() -> None:
+    summary = summarize_for_shell(st.session_state.market_state["base_snapshot"])
+    st.session_state.base_rate = summary["base_rate"]
+    st.session_state.quote_rate = summary["quote_rate"]
+    st.session_state.spot_fx = summary["spot_fx"]
+    st.session_state.cross_currency_basis_bps = int(round(summary["cross_currency_basis_bps"]))
+    st.session_state.vol_regime = "Normal"
+
+
 def _init_defaults() -> None:
     defaults = {
         "mode": "Basic",
         "base_rate": 4.25,
         "quote_rate": 5.0,
-        "spot_fx": 1.08,
+        "spot_fx": 365.0,
         "cross_currency_basis_bps": -22,
         "vol_regime": "Normal",
         "suggested_page": LEARNING_PATH[0],
+        "market_seed": 7,
+        "custom_scenario_magnitude": 0.25,
+        "selected_scenario": "none",
     }
     for key, value in defaults.items():
         st.session_state.setdefault(key, value)
+
+    st.session_state.market_state = ensure_market_state(
+        st.session_state.get("market_state"), seed=st.session_state.market_seed
+    )
+    _sync_legacy_fields()
+
+
+def _scenario_from_selection(scenario_name: str):
+    if scenario_name in SCENARIO_LIBRARY:
+        return SCENARIO_LIBRARY[scenario_name]
+    if scenario_name in {"custom_parallel", "custom_steepener", "custom_flattener"}:
+        return build_custom_scenario(scenario_name, float(st.session_state.custom_scenario_magnitude))
+    return None
 
 
 def render_global_shell() -> None:
@@ -40,23 +84,53 @@ def render_global_shell() -> None:
             help="Basic simplifies narrative. Learning adds rationale and extra interpretation.",
         )
 
-        st.subheader("Global market-state controls")
-        st.session_state.base_rate = st.slider(
-            "Base currency policy rate (%)", 0.0, 12.0, float(st.session_state.base_rate), 0.05
+        st.subheader("Regime generator")
+        st.session_state.market_seed = int(
+            st.number_input("Seed", min_value=0, max_value=999_999, value=int(st.session_state.market_seed), step=1)
         )
-        st.session_state.quote_rate = st.slider(
-            "Quote currency policy rate (%)", 0.0, 15.0, float(st.session_state.quote_rate), 0.05
-        )
-        st.session_state.spot_fx = st.number_input(
-            "Spot FX", min_value=0.1000, max_value=50.0, value=float(st.session_state.spot_fx), step=0.0001
-        )
-        st.session_state.cross_currency_basis_bps = st.slider(
-            "Cross-currency basis (bps)", -250, 250, int(st.session_state.cross_currency_basis_bps), 1
-        )
-        st.session_state.vol_regime = st.selectbox(
-            "Volatility regime", ["Calm", "Normal", "Stressed"],
-            index=["Calm", "Normal", "Stressed"].index(st.session_state.vol_regime),
-        )
+
+        regime = st.session_state.market_state["regime"]
+        regime_name = st.selectbox("Regime preset", ["baseline", "calm", "stress"], index=0)
+        level = st.slider("Level", -2.0, 2.0, float(regime.get("level", 0.0)), 0.05)
+        slope = st.slider("Slope", -2.0, 2.0, float(regime.get("slope", 0.0)), 0.05)
+        curvature = st.slider("Curvature", -2.0, 2.0, float(regime.get("curvature", 0.0)), 0.05)
+        noise_scale = st.slider("Volatility / noise", 0.2, 3.0, float(regime.get("noise_scale", 1.0)), 0.05)
+        liquidity = st.slider("Liquidity", 0.4, 2.0, float(regime.get("liquidity", 1.0)), 0.05)
+
+        if st.button("Regenerate market"):
+            st.session_state.market_state["seed"] = st.session_state.market_seed
+            st.session_state.market_state["regime"] = clip_regime(
+                {
+                    "name": regime_name,
+                    "level": level,
+                    "slope": slope,
+                    "curvature": curvature,
+                    "noise_scale": noise_scale,
+                    "liquidity": liquidity,
+                }
+            )
+            st.session_state.market_state = regenerate_market_state(st.session_state.market_state)
+            _sync_legacy_fields()
+
+        st.divider()
+        st.subheader("Scenario selector")
+        selected_label = SCENARIO_OPTIONS.get(st.session_state.selected_scenario, "No scenario")
+        scenario_label = st.selectbox("Scenario", list(SCENARIO_OPTIONS.values()), index=list(SCENARIO_OPTIONS.values()).index(selected_label))
+        scenario_name = next(key for key, value in SCENARIO_OPTIONS.items() if value == scenario_label)
+        st.session_state.selected_scenario = scenario_name
+
+        if scenario_name in {"custom_parallel", "custom_steepener", "custom_flattener"}:
+            st.session_state.custom_scenario_magnitude = st.slider(
+                "Custom magnitude", -1.5, 1.5, float(st.session_state.custom_scenario_magnitude), 0.05
+            )
+
+        if st.button("Apply scenario"):
+            scenario = _scenario_from_selection(scenario_name)
+            if scenario is None:
+                st.session_state.market_state["stressed_snapshot"] = st.session_state.market_state["base_snapshot"]
+                st.session_state.market_state["scenario"] = "none"
+            else:
+                st.session_state.market_state = apply_state_scenario(st.session_state.market_state, scenario)
 
         st.divider()
         st.subheader("Suggested learning path")

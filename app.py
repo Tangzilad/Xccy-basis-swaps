@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
+from src.controllers.market_state_controller import make_stress_table
 from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
 st.set_page_config(page_title="XCCY Basis Learning Lab", page_icon="📘", layout="wide")
@@ -30,6 +31,26 @@ learning_hint(
     "In Learning mode, each page highlights why the metric matters, what changes with regime shifts, and where model "
     "risk enters decision-making."
 )
+
+st.markdown("### Base vs stressed snapshots")
+base_snapshot = st.session_state.market_state["base_snapshot"]
+stressed_snapshot = st.session_state.market_state["stressed_snapshot"]
+
+c1, c2, c3 = st.columns(3)
+c1.metric("Scenario", st.session_state.market_state.get("scenario", "none"))
+c2.metric("Base spot", f"{base_snapshot['spot_fx']:.2f}")
+c3.metric("Stressed spot", f"{stressed_snapshot['spot_fx']:.2f}")
+
+stress_table = make_stress_table(base_snapshot, stressed_snapshot)
+st.dataframe(stress_table, use_container_width=True)
+
+lhs, rhs = st.columns(2)
+with lhs:
+    st.caption("Base market forwards")
+    st.dataframe(base_snapshot["market_forward_df"], use_container_width=True)
+with rhs:
+    st.caption("Stressed market forwards")
+    st.dataframe(stressed_snapshot["market_forward_df"], use_container_width=True)
 
 with st.expander("How to navigate"):
     st.write(
