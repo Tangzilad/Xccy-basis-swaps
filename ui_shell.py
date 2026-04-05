@@ -156,6 +156,8 @@ def render_global_shell(*, page_context: str = "overview") -> None:
     state = st.session_state["market_state"]
     snapshot = snapshot_for_narrative(state)
 
+    ms = st.session_state.market_state
+
     with st.sidebar:
         st.header("Learning + Market Controls")
         mode = st.segmented_control(
@@ -275,6 +277,8 @@ def render_global_shell(*, page_context: str = "overview") -> None:
         for step in LEARNING_PATH:
             marker = "✅" if st.session_state.get("suggested_page") == step else "•"
             st.write(f"{marker} {step}")
+
+        st.caption(st.session_state.market_narrative)
 
 
 def learning_hint(text: str) -> None:
