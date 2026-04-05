@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from src.state.market_state import snapshot_for_narrative
 from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
 
@@ -24,6 +25,8 @@ def render_lesson(
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[step_index]
 
+    snapshot = snapshot_for_narrative(st.session_state["market_state"])
+
     st.title(title)
     st.markdown("### Summary")
     st.write(summary)
@@ -35,10 +38,10 @@ def render_lesson(
 
     st.markdown("### Chart / table")
     tenors = np.array([1, 3, 6, 12, 24, 60])
-    base = st.session_state.base_rate
-    quote = st.session_state.quote_rate
-    basis_bps = st.session_state.cross_currency_basis_bps
-    vol_mul = VOL_MULTIPLIER[st.session_state.vol_regime]
+    base = float(snapshot["base_rate"])
+    quote = float(snapshot["quote_rate"])
+    basis_bps = float(snapshot["cross_currency_basis_bps"])
+    vol_mul = VOL_MULTIPLIER[str(snapshot["vol_regime"])]
 
     curve = basis_bps * np.exp(-tenors / 36) * vol_mul
     carry = (quote - base) * tenors / 12

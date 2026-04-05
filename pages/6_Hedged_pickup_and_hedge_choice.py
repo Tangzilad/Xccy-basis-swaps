@@ -1,68 +1,43 @@
 from __future__ import annotations
 
-from page_layout import render_lesson
-from src.analytics.conversion_factor import conversion_factor_curve_aware, conversion_factor_simple
+from src.analytics.conversion_factor import conversion_factor_from_fx, translate_spread_bp
+from src.analytics.hedging import hedged_pickup_bp, matched_vs_rolling_hedge_economics_bp, roll_cost_and_risk_proxy_bp
 
 
-def _conversion_demo(frame):
-    tenors_years = (frame["Tenor (M)"] / 12).tolist()
-    basis_bps = frame["Basis (bps)"].tolist()
-
-    spot = 360.0
-    # Synthetic forwards: small carry term + tenor-varying basis effect.
-    forwards = [spot * (1 + 0.01 * t) * (1 + b / 10_000) for t, b in zip(tenors_years, basis_bps)]
-    discount_factors = [1 / (1 + 0.05 * t) for t in tenors_years]
-    accruals = [
-        tenors_years[0],
-        *[tenors_years[i] - tenors_years[i - 1] for i in range(1, len(tenors_years))],
-    ]
-
-    simple_payload = conversion_factor_simple(spot_huf_per_usd=spot, forward_huf_per_usd=forwards[-1])
-    curve_payload = conversion_factor_curve_aware(
-        spot_huf_per_usd=spot,
-        forward_huf_per_usd_by_tenor=forwards,
-        tenor_years=tenors_years,
-        discount_factors=discount_factors,
-        accrual_factors=accruals,
-    )
-    return simple_payload, curve_payload
+def _get_market_state(session_state: dict) -> dict:
+    ms = session_state.get("market_state")
+    if isinstance(ms, dict):
+        return ms
+    ms = {"spot_fx": float(session_state.get("spot_fx", 1.08)), "usd_rate": float(session_state.get("base_rate", 4.25))/100, "huf_rate": float(session_state.get("quote_rate", 5.0))/100, "basis_bps": float(session_state.get("cross_currency_basis_bps", -22))}
+    session_state["market_state"] = ms
+    return ms
 
 
-def explain(frame):
-    pickup = frame.iloc[-1]["Carry differential (%)"] + frame.iloc[-1]["Basis (bps)"] / 100
-    simple_payload, curve_payload = _conversion_demo(frame)
-    simple_cf = simple_payload["conversion_factor"]
-    curve_cf = curve_payload["conversion_factor"]
-    divergence_bp_on_100 = (curve_cf - simple_cf) * 100
+def render_page() -> None:
+    import streamlit as st
+    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
-    return (
-        f"Indicative long-tenor hedged pickup is {pickup:.2f}% after basis adjustment. "
-        f"Simple FX ratio CF={simple_cf:.4f} (single-tenor forward) versus "
-        f"curve-aware CF={curve_cf:.4f} (annuity-weighted across tenor buckets). "
-        f"For a 100 bp source spread, the methods differ by {divergence_bp_on_100:.2f} bp. "
-        "Divergence appears when forward points and discounting vary across the tenor structure."
-    )
-
-
-render_lesson(
-    step_index=5,
-    title="6. Hedged pickup and hedge choice",
-    summary="Compare all-in pickup under forwards vs cross-currency swaps and relate it to hedge design choices.",
-    metric_defs=[
-        ("All-in pickup", "basis-adjusted", "instrument-sensitive"),
-        ("Rollover risk", "path-dependent", "hedge-horizon linked"),
-        ("Liquidity cost", "market-state linked", "execution-dependent"),
-    ],
-    explanation_fn=explain,
-    theory_text=(
-        "The best hedge is not always the highest-carry one; governance, liquidity, and accounting outcomes matter. "
-        "A single forward/spot ratio is easy to communicate, while a curve-aware annuity weighting better represents "
-        "multi-period swap cash-flow translation."
-    ),
-    calc_text=(
-        "Both conversion-factor methods are displayed in the dynamic explanation: "
-        "CF_simple = F_T / S_0 and CF_curve = Σ_i w_i(F_i/S_0), with w_i ∝ DF_i·Δ_i. "
-        "They match only under flat forward ratios/weights; otherwise CF_curve captures term-structure effects "
-        "and can materially shift translated bp pickup."
-    ),
-)
+    st.set_page_config(page_title="6. Hedged pickup and hedge choice", page_icon="📘", layout="wide")
+    render_global_shell(); st.session_state.suggested_page = LEARNING_PATH[5]
+    m=_get_market_state(st.session_state)
+    spot,usd,huf,basis=float(m["spot_fx"]),float(m["usd_rate"]),float(m["huf_rate"]),float(m["basis_bps"])
+    fwd=spot*(1+huf)/(1+usd); cf=conversion_factor_from_fx(spot,fwd)
+    gross=translate_spread_bp((huf-usd)*10_000,cf)
+    rows=[]
+    for hc in [20.0,35.0,50.0]:
+        rp=roll_cost_and_risk_proxy_bp(hc,hc+5.0,18.0,1.0)
+        ch=matched_vs_rolling_hedge_economics_bp(hc+12.0,hc,rp["roll_risk_proxy_bp"],0.6)
+        rows.append({"hedge_cost":hc,"pickup":hedged_pickup_bp(gross,hc,abs(basis),8.0),**rp,**ch})
+    base=next(r for r in rows if r["hedge_cost"]==35.0)
+    st.title("6. Hedged pickup and hedge choice")
+    a,b,c=st.columns(3); a.metric("Converted gross",f"{gross:.2f} bps"); b.metric("Net pickup",f"{base['pickup']:.2f} bps"); c.metric("Preferred",str(base['preferred_hedge']).title())
+    st.line_chart({"hedge_cost":[r['hedge_cost'] for r in rows],"pickup":[r['pickup'] for r in rows],"benefit_of_rolling":[r['benefit_of_rolling_bp'] for r in rows]}, x="hedge_cost")
+    st.dataframe(rows,use_container_width=True)
+    st.write("Hedge choice is based on risk-adjusted pickup rather than carry alone.")
+    learning_hint("Rolling hedges can lose after volatility-scaled roll risk penalties.")
+    render_calculation_windows([
+        CalculationWindow("Conversion factor", r"CF=F/S", f"$F={fwd:.4f}, S={spot:.4f}$", ("CF translates spread across FX quote space.",), result=f"{cf:.6f}"),
+        CalculationWindow("Translated gross pickup", r"\text{gross}_{tr}=\text{gross}\times CF", f"$\text{{gross}}={(huf-usd)*10_000:.2f}, CF={cf:.6f}$", ("Positive is favorable before costs.",), result=f"{gross:.2f} bps"),
+        CalculationWindow("Net hedged pickup", r"\text{Net}=\text{Gross}-\text{Hedge}-\text{Basis}-\text{Extra}", f"${gross:.2f}-35.00-{abs(basis):.2f}-8.00$", ("Higher positive net is better.",), result=f"{base['pickup']:.2f} bps"),
+    ])
