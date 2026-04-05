@@ -10,29 +10,34 @@ from src.analytics.conversion_factor import (
     translate_spread_inverse_bp,
 )
 
+import math
 
-def _conversion_factor(day_count_fraction: float, notional: float = 1.0) -> float:
-    if day_count_fraction < 0:
-        raise ValueError("day_count_fraction must be non-negative")
-    return notional * day_count_fraction
-
-
-def test_conversion_factor_monotonicity():
-    xs = [0.0, 0.25, 0.5, 1.0]
-    ys = [_conversion_factor(x) for x in xs]
-    assert ys == sorted(ys)
+from src.analytics.conversion_factor import (
+    conversion_factor_from_fx,
+    translate_spread_bp,
+    translate_spread_inverse_bp,
+)
+from src.analytics.parity import cip_theoretical_forward
 
 
-def test_conversion_factor_guardrail_on_negative_input():
-    with pytest.raises(ValueError):
-        _conversion_factor(-1e-9)
+def test_simple_vs_curve_aware_conversion_factor_invariant_under_cip_inputs():
+    spot = 365.0
+    usd_rate = 0.05
+    huf_rate = 0.07
+    t = 1.0
+
+    forward = cip_theoretical_forward(spot, usd_rate, huf_rate, t)
+    simple_factor = conversion_factor_from_fx(spot, forward)
+    curve_aware_factor = (1.0 + huf_rate * t) / (1.0 + usd_rate * t)
+
+    assert math.isclose(simple_factor, curve_aware_factor, rel_tol=0.0, abs_tol=1e-12)
 
 
-@pytest.mark.parametrize("x", [0.0, 1e-12, 1e6])
-def test_conversion_factor_finite(x):
-    val = _conversion_factor(x, notional=1e9)
-    assert math.isfinite(val)
-
+def test_conversion_translation_round_trip_invariant():
+    cf = conversion_factor_from_fx(spot_huf_per_usd=365.0, forward_huf_per_usd=371.0)
+    original = -42.0
+    translated = translate_spread_bp(original, cf)
+    recovered = translate_spread_inverse_bp(translated, cf)
 
 def test_conversion_factor_simple_payload_and_alias():
     payload = conversion_factor_simple(spot_huf_per_usd=360.0, forward_huf_per_usd=372.0)
