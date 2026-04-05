@@ -158,6 +158,8 @@ def render_global_shell(*, page_context: str = "overview") -> None:
 
     ms = st.session_state.market_state
 
+    ms = st.session_state.market_state
+
     with st.sidebar:
         st.header("Learning + Market Controls")
         mode = st.segmented_control(
