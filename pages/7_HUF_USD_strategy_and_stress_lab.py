@@ -8,6 +8,25 @@ from src.analytics.xccy_swap import synthetic_funding_cost_outputs
 from src.state.session_access import get_canonical_market_context
 
 
+def _baseline_market_state(session_state: dict) -> dict:
+    ms = session_state.get("market_state")
+    if isinstance(ms, dict) and "base_snapshot" in ms:
+        summary = get_canonical_market_context(session_state)["summary_1y"]["base"]
+        return {
+            "spot_fx": float(summary["spot_fx"]),
+            "usd_rate": float(summary["usd_rate"]),
+            "huf_rate": float(summary["huf_rate"]),
+            "basis_bps": float(summary["basis_bps"]),
+        }
+    return {
+        "spot_fx": float(session_state.get("spot_fx", 365.0)),
+        "usd_rate": float(session_state.get("base_rate", 4.25)) / 100.0,
+        "huf_rate": float(session_state.get("quote_rate", 5.0)) / 100.0,
+        "basis_bps": float(session_state.get("cross_currency_basis_bps", -22.0)),
+    }
+
+
+
 def _compute_metrics(snapshot: dict) -> dict:
     usd_df = snapshot["usd_curve_df"].set_index("tenor")
     huf_df = snapshot["huf_curve_df"].set_index("tenor")
