@@ -14,50 +14,26 @@ from src.analytics.hedging import (
 from src.state.session_access import get_canonical_market_context
 
 
-def render_page() -> None:
-    import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
-    from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
+def _get_market_state(session_state: dict) -> object:
+    return session_state.get("market_state")
 
-    st.set_page_config(page_title="6. Hedged pickup and hedge choice", page_icon="📘", layout="wide")
-    render_global_shell()
-    st.session_state.suggested_page = LEARNING_PATH[5]
 
-    summary = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
-    spot, usd, huf, basis = float(summary["spot_fx"]), float(summary["usd_rate"]), float(summary["huf_rate"]), float(summary["basis_bps"])
-
-    fwd = spot * (1 + huf) / (1 + usd)
-    cf = conversion_factor_from_fx(spot, fwd)
-    gross = translate_spread_bp((huf - usd) * 10_000, cf)
-
-    rows = []
-    for hc in [20.0, 35.0, 50.0]:
-        rp = roll_cost_and_risk_proxy_bp(hc, hc + 5.0, 18.0, 1.0)
-        ch = matched_vs_rolling_hedge_economics_bp(hc + 12.0, hc, rp["roll_risk_proxy_bp"], 0.6)
-        rows.append({"hedge_cost": hc, "pickup": hedged_pickup_bp(gross, hc, abs(basis), 8.0), **rp, **ch})
-    base = next(r for r in rows if r["hedge_cost"] == 35.0)
-
-    st.title("6. Hedged pickup and hedge choice")
-    a, b, c = st.columns(3)
-    a.metric("Converted gross", f"{gross:.2f} bps")
-    b.metric("Net pickup", f"{base['pickup']:.2f} bps")
-    c.metric("Preferred", str(base["preferred_hedge"]).title())
-    st.line_chart({"hedge_cost": [r['hedge_cost'] for r in rows], "pickup": [r['pickup'] for r in rows], "benefit_of_rolling": [r['benefit_of_rolling_bp'] for r in rows]}, x="hedge_cost")
-    st.dataframe(rows, use_container_width=True)
-    render_global_shell(); st.session_state.suggested_page = LEARNING_PATH[5]
-    context = get_canonical_market_context(st.session_state)
+def _build_payload(session_state: dict) -> dict[str, object]:
+    context = get_canonical_market_context(session_state)
     base_summary = context["summary_1y"]["base"]
+
     spot = float(base_summary["spot_fx"])
     usd = float(base_summary["usd_rate"])
     huf = float(base_summary["huf_rate"])
     basis = float(base_summary["basis_bps"])
-    fwd=spot*(1+huf)/(1+usd)
-    simple_cf_payload = conversion_factor_simple(spot, fwd)
+    fwd_1y = spot * (1 + huf) / (1 + usd)
+
+    simple_cf_payload = conversion_factor_simple(spot, fwd_1y)
     simple_cf = float(simple_cf_payload["conversion_factor"])
 
     tenor_years = [0.5, 1.0, 2.0]
-    forward_curve = [spot * (1 + huf * t) / (1 + usd * t) for t in tenor_years]
-    discount_factors = [1 / (1 + usd * t) for t in tenor_years]
+    forward_curve = [spot * (1 + huf * tenor) / (1 + usd * tenor) for tenor in tenor_years]
+    discount_factors = [1.0 / (1.0 + usd * tenor) for tenor in tenor_years]
     curve_cf_payload = conversion_factor_curve_aware(
         spot_huf_per_usd=spot,
         forward_huf_per_usd_by_tenor=forward_curve,
@@ -66,11 +42,11 @@ def render_page() -> None:
     )
     curve_cf = float(curve_cf_payload["conversion_factor"])
 
-    nominal_diff_bp = (huf - usd) * 10_000
+    nominal_diff_bp = (huf - usd) * 10_000.0
     gross_pickup_bp = translate_spread_bp(nominal_diff_bp, curve_cf)
     round_trip = spread_translation_round_trip_bp(nominal_diff_bp, curve_cf, tolerance_bp=1e-6)
 
-    rows = []
+    rows: list[dict[str, float | str]] = []
     for hedge_cost_bp in [20.0, 35.0, 50.0]:
         roll_payload = roll_cost_and_risk_proxy_bp(
             current_roll_cost_bp=hedge_cost_bp,
@@ -128,7 +104,7 @@ def render_page() -> None:
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[5]
 
-    payload = _build_canonical_payload(_get_market_state(st.session_state))
+    payload = _build_payload(st.session_state)
 
     st.title("6. Hedged pickup and hedge choice")
     a, b, c, d = st.columns(4)
@@ -257,4 +233,5 @@ def render_page() -> None:
     )
 
 
-render_page()
+if __name__ == "__main__":
+    render_page()
