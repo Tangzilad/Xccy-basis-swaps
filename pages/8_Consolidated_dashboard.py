@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from shared_page_helpers import as_decimal, get_market_params, render_page_header
+from shared_page_helpers import render_page_header
 from src.analytics.conversion_factor import conversion_factor_from_fx, translate_spread_bp
 from src.analytics.frictions import friction_adjusted_arbitrage_band_bp
 from src.analytics.funding import build_tenor_funding_table, issuance_choice
