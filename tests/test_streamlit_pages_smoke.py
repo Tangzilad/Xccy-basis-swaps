@@ -206,11 +206,11 @@ def test_calculation_panel_sections_present(monkeypatch):
     def _window(title: str) -> CalculationWindow:
         return CalculationWindow(
             title=title,
-            concept_meaning="Concept",
-            why_it_matters="Why",
+            meaning="Concept",
+            significance="Why",
             formula="x",
-            methodology_rationale="Method",
-            inputs_used="Inputs",
+            methodology="Method",
+            inputs="Inputs",
             substituted_values="x",
             derivation_steps=("Step",),
             assumptions=("Assumption",),

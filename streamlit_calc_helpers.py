@@ -6,97 +6,53 @@ from dataclasses import dataclass, field
 from typing import Iterable, Sequence
 
 
-@dataclass(slots=True)
+@dataclass(slots=True, kw_only=True)
 class CalculationWindow:
-    """Pedagogical container for calculation details displayed in the UI.
+    """Pedagogical container for calculation details displayed in the UI."""
 
-    Supports both the rich schema used by newer pages and a compact legacy
-    positional form:
-    ``CalculationWindow(title, formula, substituted_values, sign_notes=..., result=...)``.
-    """
-
-    title: str
-    concept_meaning: str = ""
-    why_it_matters: str = ""
+    concept: str = ""
+    meaning: str = ""
+    significance: str = ""
     formula: str = ""
-    methodology_rationale: str = ""
-    inputs_used: str = ""
+    methodology: str = ""
+    inputs: str = ""
     substituted_values: str = ""
     derivation_steps: Sequence[str] = field(default_factory=tuple)
-    deep_derivation: Sequence[str] = field(default_factory=tuple)
     assumptions: Sequence[str] = field(default_factory=tuple)
     interpretation: str = ""
     common_misunderstandings: Sequence[str] = field(default_factory=tuple)
     result: str = ""
+    title: str | None = None
     expanded: bool = False
 
-    def __init__(self, title: str, *args, **kwargs) -> None:  # noqa: D401 - custom init for compatibility
-        self.title = title
+    def __post_init__(self) -> None:
+        # Clean aliasing between concept and optional UI title.
+        if (not self.concept or not self.concept.strip()) and self.title and self.title.strip():
+            self.concept = self.title
+        if self.title is None or not self.title.strip():
+            self.title = self.concept
 
-        # Defaults
-        self.concept_meaning = kwargs.pop("concept_meaning", "")
-        self.why_it_matters = kwargs.pop("why_it_matters", "")
-        self.formula = kwargs.pop("formula", "")
-        self.methodology_rationale = kwargs.pop("methodology_rationale", "")
-        self.inputs_used = kwargs.pop("inputs_used", "")
-        self.substituted_values = kwargs.pop("substituted_values", "")
-        self.derivation_steps = tuple(kwargs.pop("derivation_steps", ()))
-        self.deep_derivation = tuple(kwargs.pop("deep_derivation", ()))
-        self.assumptions = tuple(kwargs.pop("assumptions", ()))
-        self.interpretation = kwargs.pop("interpretation", "")
-        self.common_misunderstandings = tuple(kwargs.pop("common_misunderstandings", ()))
-        self.result = kwargs.pop("result", "")
-        self.expanded = kwargs.pop("expanded", False)
-
-        if kwargs:
-            unknown = ", ".join(sorted(kwargs))
-            raise TypeError(f"Unknown CalculationWindow argument(s): {unknown}")
-
-        # Legacy positional shape: (formula, substituted_values[, sign_notes])
-        if len(args) >= 2 and not self.formula and not self.substituted_values:
-            self.formula = str(args[0])
-            self.substituted_values = str(args[1])
-            self.inputs_used = self.inputs_used or self.substituted_values
-
-            sign_notes: Sequence[str] = tuple(args[2]) if len(args) >= 3 else tuple()
-            self.concept_meaning = self.concept_meaning or f"{title} explains one component of the pricing decomposition."
-            self.why_it_matters = self.why_it_matters or "It links observable market inputs to a decision-relevant metric."
-            self.methodology_rationale = self.methodology_rationale or "Apply the stated identity under the page sign convention."
-            self.derivation_steps = self.derivation_steps or (
-                "Read market inputs under the HUF-per-USD convention.",
-                "Apply the formula directly.",
-                "Compare against benchmark interpretation.",
-            )
-            self.assumptions = self.assumptions or ("No additional assumptions provided.",)
-            self.interpretation = self.interpretation or (
-                sign_notes[0] if sign_notes else "Interpret result under the page sign convention."
-            )
-            self.common_misunderstandings = self.common_misunderstandings or (
-                sign_notes if sign_notes else ("Ignoring sign conventions can invert interpretation.",)
-            )
-            return
-
-        # Compact positional shape used in tests: (formula, substituted_values)
-        if len(args) == 2 and not self.formula and not self.substituted_values:
-            self.formula = str(args[0])
-            self.substituted_values = str(args[1])
-            self.inputs_used = self.inputs_used or self.substituted_values
+        self.derivation_steps = tuple(self.derivation_steps)
+        self.assumptions = tuple(self.assumptions)
+        self.common_misunderstandings = tuple(self.common_misunderstandings)
 
     def validate(self, *, required_fields: Sequence[str] | None = None) -> None:
         """Validate required narrative sections are populated."""
         required = tuple(
             required_fields
             or (
-                "concept_meaning",
-                "why_it_matters",
+                "concept",
+                "meaning",
+                "significance",
                 "formula",
-                "methodology_rationale",
-                "inputs_used",
+                "methodology",
+                "inputs",
                 "substituted_values",
                 "derivation_steps",
                 "assumptions",
                 "interpretation",
                 "common_misunderstandings",
+                "result",
             )
         )
 
@@ -112,23 +68,11 @@ class CalculationWindow:
             else:
                 if value is None:
                     missing.append(field_name)
+
         if missing:
             raise ValueError(
                 f"Calculation window '{self.title}' is missing required field(s): {', '.join(missing)}"
             )
-
-
-@dataclass(slots=True)
-class LegacyCalculationWindow:
-    """Backward-compatible legacy format used by older page code."""
-
-    title: str
-    formula: str
-    substituted_values: str
-    sign_convention_notes: Sequence[str] = field(default_factory=tuple)
-    assumptions: Sequence[str] = field(default_factory=tuple)
-    result: str = ""
-    expanded: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -167,57 +111,63 @@ DEFAULT_REQUIRED_KEYS: tuple[str, ...] = (
     "stressed_vs_base_deltas",
 )
 
+SECTION_ORDER: tuple[str, ...] = (
+    "Concept",
+    "Meaning",
+    "Significance",
+    "Formula",
+    "Methodology",
+    "Inputs",
+    "Substitution",
+    "Derivation",
+    "Assumptions",
+    "Interpretation",
+    "Common misunderstandings",
+    "Result",
+)
 
-def adapt_legacy_window(window: LegacyCalculationWindow) -> CalculationWindow:
-    """Adapt a legacy calculation window to the rich pedagogical schema."""
-    return CalculationWindow(
-        window.title,
-        window.formula,
-        window.substituted_values,
-        tuple(window.sign_convention_notes),
-        assumptions=tuple(window.assumptions),
-        result=window.result,
-        expanded=window.expanded,
-    )
 
-
-def _normalize_window(window: CalculationWindow | LegacyCalculationWindow) -> CalculationWindow:
+def _normalize_window(window: CalculationWindow) -> CalculationWindow:
     if isinstance(window, CalculationWindow):
         return window
-    if isinstance(window, LegacyCalculationWindow):
-        return adapt_legacy_window(window)
-    raise TypeError(f"Expected CalculationWindow or LegacyCalculationWindow, got {type(window)!r}.")
+    raise TypeError(f"Expected CalculationWindow, got {type(window)!r}.")
 
 
 def _apply_sign_context(window: CalculationWindow, sign_convention: SignConventionContext | None) -> CalculationWindow:
     if sign_convention is None:
         return window
-    interpretation = window.interpretation or sign_convention.perspective
-    misunderstandings = tuple(window.common_misunderstandings) or (
-        f"Misreading the quote convention ({sign_convention.quote_convention}) can invert interpretation.",
-    )
-    assumptions = tuple(window.assumptions) or (f"Quote convention is {sign_convention.quote_convention}.",)
+
+    interpretation = window.interpretation.strip() if window.interpretation else ""
+    if not interpretation:
+        interpretation = sign_convention.perspective
+
+    assumptions = tuple(window.assumptions)
+    if len(assumptions) == 0 or all(not str(item).strip() for item in assumptions):
+        assumptions = (
+            f"Quote convention is {sign_convention.quote_convention}.",
+            f"Perspective: {sign_convention.perspective}",
+        )
 
     return CalculationWindow(
         title=window.title,
-        concept_meaning=window.concept_meaning,
-        why_it_matters=window.why_it_matters,
+        concept=window.concept,
+        meaning=window.meaning,
+        significance=window.significance,
         formula=window.formula,
-        methodology_rationale=window.methodology_rationale,
-        inputs_used=window.inputs_used,
+        methodology=window.methodology,
+        inputs=window.inputs,
         substituted_values=window.substituted_values,
         derivation_steps=tuple(window.derivation_steps),
-        deep_derivation=tuple(window.deep_derivation),
         assumptions=assumptions,
         interpretation=interpretation,
-        common_misunderstandings=misunderstandings,
+        common_misunderstandings=tuple(window.common_misunderstandings),
         result=window.result,
         expanded=window.expanded,
     )
 
 
 def validate_required_calculation_windows(
-    calculations: dict[str, CalculationWindow | LegacyCalculationWindow],
+    calculations: dict[str, CalculationWindow],
     *,
     required_keys: Sequence[str],
     page_name: str | None = None,
@@ -240,14 +190,14 @@ def validate_required_calculation_windows(
         windows.append(
             CalculationWindow(
                 title=window.title,
-                concept_meaning=window.concept_meaning,
-                why_it_matters=window.why_it_matters,
+                concept=window.concept,
+                meaning=window.meaning,
+                significance=window.significance,
                 formula=window.formula,
-                methodology_rationale=window.methodology_rationale,
-                inputs_used=window.inputs_used,
+                methodology=window.methodology,
+                inputs=window.inputs,
                 substituted_values=window.substituted_values,
                 derivation_steps=tuple(window.derivation_steps),
-                deep_derivation=tuple(window.deep_derivation),
                 assumptions=tuple(window.assumptions),
                 interpretation=window.interpretation,
                 common_misunderstandings=tuple(window.common_misunderstandings),
@@ -258,26 +208,29 @@ def validate_required_calculation_windows(
     return windows
 
 
-def render_calculation_window(window: CalculationWindow | LegacyCalculationWindow) -> None:
+def render_calculation_window(window: CalculationWindow) -> None:
     """Render a single collapsible window containing a calculation breakdown."""
     import streamlit as st
 
     normalized = _normalize_window(window)
     with st.expander(normalized.title, expanded=normalized.expanded):
         st.markdown("#### Concept")
-        st.markdown(normalized.concept_meaning)
+        st.markdown(normalized.concept)
 
-        st.markdown("#### Why it matters")
-        st.markdown(normalized.why_it_matters)
+        st.markdown("#### Meaning")
+        st.markdown(normalized.meaning)
+
+        st.markdown("#### Significance")
+        st.markdown(normalized.significance)
 
         st.markdown("#### Formula")
         st.latex(normalized.formula)
 
-        st.markdown("#### Method")
-        st.markdown(normalized.methodology_rationale)
+        st.markdown("#### Methodology")
+        st.markdown(normalized.methodology)
 
         st.markdown("#### Inputs")
-        st.markdown(normalized.inputs_used)
+        st.markdown(normalized.inputs)
 
         st.markdown("#### Substitution")
         st.markdown(normalized.substituted_values)
@@ -286,34 +239,23 @@ def render_calculation_window(window: CalculationWindow | LegacyCalculationWindo
         for step in normalized.derivation_steps:
             st.markdown(f"- {step}")
 
-        if normalized.deep_derivation:
-            with st.expander("Derivation details", expanded=False):
-                for detail in normalized.deep_derivation:
-                    st.markdown(f"- {detail}")
-
         st.markdown("#### Assumptions")
-        if normalized.assumptions:
-            for assumption in normalized.assumptions:
-                st.markdown(f"- {assumption}")
-        else:
-            st.markdown("- None provided")
+        for assumption in normalized.assumptions:
+            st.markdown(f"- {assumption}")
 
         st.markdown("#### Interpretation")
         st.markdown(normalized.interpretation)
 
         st.markdown("#### Common misunderstandings")
-        if normalized.common_misunderstandings:
-            for misunderstanding in normalized.common_misunderstandings:
-                st.markdown(f"- {misunderstanding}")
-        else:
-            st.markdown("- None provided")
+        for misunderstanding in normalized.common_misunderstandings:
+            st.markdown(f"- {misunderstanding}")
 
         st.markdown("#### Result")
         st.success(normalized.result)
 
 
 def render_calculation_windows(
-    windows: Iterable[CalculationWindow | LegacyCalculationWindow],
+    windows: Iterable[CalculationWindow],
     *,
     sign_convention: SignConventionContext | None = None,
 ) -> None:
@@ -324,7 +266,7 @@ def render_calculation_windows(
 
 
 def render_required_calculation_windows(
-    calculations: dict[str, CalculationWindow | LegacyCalculationWindow],
+    calculations: dict[str, CalculationWindow],
     *,
     required_keys: Sequence[str] = DEFAULT_REQUIRED_KEYS,
     page_name: str | None = None,
