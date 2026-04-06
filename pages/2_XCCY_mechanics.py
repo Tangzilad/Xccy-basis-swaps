@@ -10,8 +10,6 @@ from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
 from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
 
-def render_page() -> None:
-
 REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
     "theoretical_forward",
     "implied_usd_rate",

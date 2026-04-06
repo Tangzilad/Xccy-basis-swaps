@@ -138,13 +138,13 @@ Therefore "higher nominal yield" can still produce weak or negative net pickup a
     # --- Calculation windows ---
     render_calculation_windows(
         [
-            CalculationWindow(
-                "Simple conversion factor",
-                r"CF_{simple}=F/S",
-                f"$F={fwd:.4f}, S={spot:.4f}$",
-                ("Simple tenor-matched ratio for quote translation.",),
-                result=f"{simple_cf:.6f}",
-            ),
+                CalculationWindow(
+                    "Simple conversion factor",
+                    r"CF_{simple}=F/S",
+                    f"$F={fwd_1y:.4f}, S={spot:.4f}$",
+                    ("Simple tenor-matched ratio for quote translation.",),
+                    result=f"{simple_cf:.6f}",
+                ),
             CalculationWindow(
                 "Curve-aware conversion factor",
                 r"CF_{curve}=\sum_i w_i(F_i/S)",
@@ -207,7 +207,7 @@ Therefore "higher nominal yield" can still produce weak or negative net pickup a
         decomposition = hedged_pickup_decomposition_bp(
             gross_spread_pickup_bp=gross_pickup_bp,
             hedge_cost_bp=hedge_cost_bp,
-            basis_drag_bp=abs(basis_bps),
+            basis_drag_bp=abs(basis),
             extra_friction_bp=8.0,
         )
         rows.append(
@@ -224,7 +224,7 @@ Therefore "higher nominal yield" can still produce weak or negative net pickup a
     return {
         "spot": spot,
         "fwd_1y": fwd_1y,
-        "basis_bps": basis_bps,
+        "basis_bps": basis,
         "simple_cf": simple_cf,
         "curve_cf": curve_cf,
         "nominal_diff_bp": nominal_diff_bp,
@@ -394,4 +394,6 @@ def render_page() -> None:
 
 
 if __name__ == "__main__":
+    render_page()
+else:
     render_page()

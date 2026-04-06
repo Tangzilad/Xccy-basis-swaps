@@ -164,6 +164,12 @@ def render_global_shell(*, page_context: str = "overview") -> None:
 
     if scenario.startswith("custom_"):
         st.session_state.custom_scenario_magnitude = st.sidebar.slider(
+            "Custom scenario magnitude",
+            min_value=0.5,
+            max_value=3.0,
+            value=float(st.session_state.get("custom_scenario_magnitude", 1.0)),
+            step=0.1,
+        )
     current_regime = str(st.session_state["market_state"]["regime"].get("name", "baseline")).lower()
     regime_index = list(REGIME_OPTIONS.keys()).index(current_regime) if current_regime in REGIME_OPTIONS else 0
 
@@ -238,7 +244,6 @@ def render_global_shell(*, page_context: str = "overview") -> None:
             step=0.05,
         )
 
-    if st.sidebar.button("Regenerate market"):
     if patch:
         st.session_state["market_state"] = apply_shell_patch(st.session_state["market_state"], patch)
         st.session_state.mode = patch.get("learning_mode", st.session_state.get("mode", "Learning"))
