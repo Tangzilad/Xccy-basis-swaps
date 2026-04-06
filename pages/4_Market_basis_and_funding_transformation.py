@@ -1,6 +1,11 @@
 from __future__ import annotations
 
-from src.analytics.funding import all_in_funding_decomposition
+from src.analytics.funding import (
+    build_tenor_funding_table,
+    funding_calculation_windows_payload,
+    funding_role_interpretation,
+    issuance_choice,
+)
 
 
 def _as_decimal(v: float) -> float:
@@ -11,7 +16,12 @@ def _get_market_state(session_state: dict) -> dict:
     ms = session_state.get("market_state")
     if isinstance(ms, dict):
         return ms
-    ms = {"usd_rate": _as_decimal(float(session_state.get("base_rate", 4.25))), "huf_rate": _as_decimal(float(session_state.get("quote_rate", 5.0))), "basis_bps": float(session_state.get("cross_currency_basis_bps", -22)), "extra_spread_bps": 12.0}
+    ms = {
+        "usd_rate": _as_decimal(float(session_state.get("base_rate", 4.25))),
+        "huf_rate": _as_decimal(float(session_state.get("quote_rate", 5.0))),
+        "basis_bps": float(session_state.get("cross_currency_basis_bps", -22)),
+        "extra_spread_bps": 12.0,
+    }
     session_state["market_state"] = ms
     return ms
 
@@ -22,13 +32,42 @@ def render_page() -> None:
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="4. Market basis and funding transformation", page_icon="📘", layout="wide")
-    render_global_shell(); st.session_state.suggested_page = LEARNING_PATH[3]
+    render_global_shell()
+    st.session_state.suggested_page = LEARNING_PATH[3]
+
     m = _get_market_state(st.session_state)
-    usd, huf, basis, extra = _as_decimal(float(m["usd_rate"])), _as_decimal(float(m["huf_rate"])), float(m["basis_bps"]) / 10_000.0, float(m["extra_spread_bps"]) / 10_000.0
-    rows=[]
-    for t,s in zip(["3M","6M","1Y","2Y","5Y"],[0.9,1.0,1.05,1.1,1.2], strict=True):
-        rows.append({"Tenor":t, **all_in_funding_decomposition(usd+0.0005*s,huf+0.0008*s,basis*s,extra)})
-    one=next(r for r in rows if r["Tenor"]=="1Y")
+    usd = _as_decimal(float(m["usd_rate"]))
+    huf = _as_decimal(float(m["huf_rate"]))
+    basis = float(m["basis_bps"]) / 10_000.0
+    extra = float(m["extra_spread_bps"]) / 10_000.0
+
+    tenors = ("3M", "6M", "1Y", "2Y", "5Y")
+    scales = (0.9, 1.0, 1.05, 1.1, 1.2)
+    rows = build_tenor_funding_table(
+        domestic_label="HUF",
+        foreign_label="USD",
+        domestic_curve_rate=huf,
+        foreign_curve_rate=usd,
+        basis_spread=basis,
+        extra_spread=extra,
+        tenors=tenors,
+        tenor_scales=scales,
+        domestic_curve_slope=0.0008,
+        foreign_curve_slope=0.0005,
+    )
+    one = next(r for r in rows if r["Tenor"] == "1Y")
+
+    huf_choice = issuance_choice(
+        issue_currency="HUF",
+        direct_rate=float(one["HUF direct"]),
+        swapped_rate=float(one["HUF synthetic"]),
+    )
+    usd_choice = issuance_choice(
+        issue_currency="USD",
+        direct_rate=float(one["USD direct"]),
+        swapped_rate=float(one["USD synthetic"]),
+    )
+
     st.title("4. Market basis and funding transformation")
     a,b,c=st.columns(3); a.metric("Direct all-in",f"{one['domestic_all_in']:.3%}"); b.metric("Synthetic all-in",f"{one['synthetic_all_in']:.3%}"); c.metric("Gap",f"{one['cross_market_gap']*10000:.2f} bps")
     st.line_chart({"Tenor":[r['Tenor'] for r in rows],"gap":[r['cross_market_gap'] for r in rows]}, x="Tenor")
