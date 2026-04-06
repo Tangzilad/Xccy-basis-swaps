@@ -40,3 +40,9 @@ def render_page() -> None:
         CalculationWindow("Synthetic all-in", r"r_{syn}=r_{forcurve}+b+s_{extra}", f"$r_{{forcurve}}={one['foreign_curve']:.4%}, b={one['basis']:.4%}$", ("Positive basis raises synthetic cost.",), result=f"{one['synthetic_all_in']:.4%}"),
         CalculationWindow("Cross-market gap", r"\Delta r=r_{syn}-r_{dom}", f"${one['synthetic_all_in']:.6f}-{one['domestic_all_in']:.6f}$", ("Positive gap: synthetic is worse.",), result=f"{one['cross_market_gap']*10000:.2f} bps"),
     ])
+
+
+if __name__ == "__main__":
+    render_page()
+else:
+    render_page()

@@ -41,3 +41,9 @@ def render_page() -> None:
         CalculationWindow("Translated gross pickup", r"\text{gross}_{tr}=\text{gross}\times CF", f"$\text{{gross}}={(huf-usd)*10_000:.2f}, CF={cf:.6f}$", ("Positive is favorable before costs.",), result=f"{gross:.2f} bps"),
         CalculationWindow("Net hedged pickup", r"\text{Net}=\text{Gross}-\text{Hedge}-\text{Basis}-\text{Extra}", f"${gross:.2f}-35.00-{abs(basis):.2f}-8.00$", ("Higher positive net is better.",), result=f"{base['pickup']:.2f} bps"),
     ])
+
+
+if __name__ == "__main__":
+    render_page()
+else:
+    render_page()

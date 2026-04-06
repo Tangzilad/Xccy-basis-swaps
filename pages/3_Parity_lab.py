@@ -241,3 +241,14 @@ def render_page() -> None:
         ),
     }
     render_required_calculation_windows(calc_windows, default_expanded=False)
+    render_calculation_windows([
+        CalculationWindow("CIP theoretical forward", r"F=S\frac{1+r_{HUF}T}{1+r_{USD}T}", f"$S={spot:.4f}, r_{{HUF}}={huf:.4%}, r_{{USD}}={usd:.4%}$", ("Higher HUF rate lifts forward.",), result=f"{one['fair_forward_no_basis']:.4f}"),
+        CalculationWindow("Implied HUF rate", r"r_{HUF}^{impl}=\frac{(F/S)(1+r_{USD}T)-1}{T}", f"$F={one['observed_forward']:.4f}$", ("Positive gap = richer implied HUF.",), result=f"{ih:.4%}"),
+        CalculationWindow("Implied USD rate", r"r_{USD}^{impl}=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}", f"$F={one['observed_forward']:.4f}$", ("Higher implied USD worsens synthetic borrowing.",), result=f"{iu:.4%}"),
+    ])
+
+
+if __name__ == "__main__":
+    render_page()
+else:
+    render_page()
