@@ -34,7 +34,6 @@ WORKED_EXAMPLE = {
 }
 
 
-def render_page() -> None:
 REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
     "theoretical_forward",
     "implied_huf_rate",
@@ -110,7 +109,6 @@ def render_page() -> None:
     default_usd = from_decimal(float(m["usd_rate"]))
     default_huf = from_decimal(float(m["huf_rate"]))
 
-    if st.button("Load worked example (HUF/USD)"):
     st.title("3. Parity lab")
     context = get_canonical_market_context(st.session_state)
     base_summary = context["summary_1y"]["base"]
@@ -227,9 +225,6 @@ def render_page() -> None:
         tenor_labels=TENOR_LADDER,
         anchor_observed_forward=observed_forward,
         anchor_tenor_label=tenor_label,
-        "**Sign convention (HUF per USD):** A **positive** raw basis wedge means the observed forward "
-        "is high vs no-basis CIP, so implied HUF funding is richer. A **negative** wedge means "
-        "observed forward is low vs CIP and synthetic USD funding is cheaper."
     )
     st.line_chart(
         {
@@ -351,24 +346,6 @@ def render_page() -> None:
             result="See page 5",
         ),
         "hedged_pickup": CalculationWindow(
-            "Hedged pickup",
-            r"\text{Pickup}=\text{Carry}-\text{Hedge costs}",
-            "Carry and hedge implementation are shown in page 6.",
-            result="See page 6",
-            title="Friction-adjusted arbitrage band",
-            concept_meaning="Net tradable edge after subtracting implementation frictions.",
-            why_it_matters="Distinguishes visible wedge from actionable opportunity.",
-            formula=r"\text{Net edge}=\text{Raw wedge}-\text{Frictions}",
-            methodology_rationale="Later pages layer cost bands over raw wedge diagnostics.",
-            inputs_used="Raw wedge and total friction estimate (not modeled here).",
-            substituted_values="Friction inputs are not modelled on this page; interpret raw wedge before costs.",
-            derivation_steps=("Take raw wedge.", "Subtract modeled friction band (on later pages).",),
-            assumptions=("Friction calibration deferred to dedicated page.",),
-            interpretation="Displayed as placeholder here; requires friction model inputs.",
-            common_misunderstandings=("Treating raw wedge alone as directly tradable.",),
-            result="N/A on this page",
-        ),
-        "hedged_pickup": CalculationWindow(
             title="Hedged pickup",
             concept_meaning="Risk-managed carry after hedge and basis implementation costs.",
             why_it_matters="Critical metric for strategy attractiveness.",
@@ -389,10 +366,6 @@ def render_page() -> None:
             result=f"{observed_forward / spot:.6f}",
         ),
         "stressed_vs_base_deltas": CalculationWindow(
-            "Stressed vs base deltas",
-            r"\Delta x = x_{stress}-x_{base}",
-            "This page displays current-state decomposition only.",
-            result="See page 7",
             title="Stressed vs base deltas",
             concept_meaning="Scenario-change metric between stress and baseline states.",
             why_it_matters="Supports attribution when moving from diagnosis to stress testing.",
@@ -422,4 +395,6 @@ def render_page() -> None:
 
 
 if __name__ == "__main__":
+    render_page()
+else:
     render_page()

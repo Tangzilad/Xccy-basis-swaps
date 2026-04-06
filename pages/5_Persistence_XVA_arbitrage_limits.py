@@ -9,10 +9,7 @@ from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
 from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
 
-def render_page() -> None:
 from src.explainers.theory_panels import render_pedagogical_scaffold
-from src.analytics.frictions import friction_adjusted_arbitrage_band_bp
-from src.state.session_access import get_canonical_market_context
 
 REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
     "friction_adjusted_arbitrage_band",

@@ -6,21 +6,13 @@ from shared_page_helpers import as_decimal, get_funding_params, render_page_foot
 from src.analytics.funding import (
     all_in_funding_decomposition,
     build_tenor_funding_table,
-    issuance_choice,
-)
-from src.state.session_access import get_canonical_market_context
-from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
-from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
-
-
-def render_page() -> None:
-from src.analytics.funding import (
-    all_in_funding_decomposition,
-    build_tenor_funding_table,
     funding_role_interpretation,
     issuance_choice,
 )
+from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
+from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
 
 def _get_market_state(session_state: dict) -> object:
@@ -162,6 +154,8 @@ def render_page() -> None:
     st.markdown("### Funding Gap Across Tenors")
     st.line_chart(
         {"Tenor": [r["Tenor"] for r in rows], "HUF gap": [r["HUF delta"] for r in rows], "USD gap": [r["USD delta"] for r in rows]},
+        x="Tenor",
+    )
     selected_role = _normalize_role_from_state(canonical_state.get("user_role"))
     role = st.selectbox(
         "Role lens",
@@ -220,12 +214,6 @@ def render_page() -> None:
         "A treasurer must evaluate the full tenor structure, not just the 1Y point."
     )
 
-    # --- Calculation windows ---
-    render_calculation_windows(
-        [
-            CalculationWindow(
-                "Direct HUF all-in",
-                r"r_{dir,dom}=r_{domcurve}+s_{extra}",
     huf_state, huf_icon = _recommendation_state(one["HUF delta"] * 10_000.0, friction_bps_1y)
     usd_state, usd_icon = _recommendation_state(one["USD delta"] * 10_000.0, friction_bps_1y)
     st.subheader("Recommendation panel (1Y)")
@@ -350,12 +338,9 @@ def render_page() -> None:
 
     # --- Pedagogical footer ---
     render_page_footer(3)
-                ("Positive gap: synthetic is worse.",),
-                result=f"{one['HUF delta'] * 10000:.2f} bps",
-            ),
-        ]
-    )
 
 
 if __name__ == "__main__":
+    render_page()
+else:
     render_page()
