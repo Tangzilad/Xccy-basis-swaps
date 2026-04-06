@@ -21,7 +21,6 @@ _LEVEL_RANGE = (-2.0, 2.0)
 _SLOPE_RANGE = (-2.0, 2.0)
 _CURVATURE_RANGE = (-2.0, 2.0)
 _NOISE_RANGE = (0.2, 3.0)
-_LIQUIDITY_RANGE = (0.4, 2.0)
 _SPOT_RANGE = (120.0, 1200.0)
 _BASIS_RANGE_BPS = (-800.0, 800.0)
 _FRICTION_RANGE_BPS = (0.0, 1200.0)
@@ -47,7 +46,6 @@ _DEFAULT_REGIME = {
     "slope": 0.0,
     "curvature": 0.0,
     "noise_scale": 1.0,
-    "liquidity": 1.0,
 }
 
 
@@ -58,7 +56,6 @@ def clip_regime(regime: Mapping[str, Any]) -> dict[str, Any]:
         "slope": float(np.clip(float(regime.get("slope", 0.0)), *_SLOPE_RANGE)),
         "curvature": float(np.clip(float(regime.get("curvature", 0.0)), *_CURVATURE_RANGE)),
         "noise_scale": float(np.clip(float(regime.get("noise_scale", 1.0)), *_NOISE_RANGE)),
-        "liquidity": float(np.clip(float(regime.get("liquidity", 1.0)), *_LIQUIDITY_RANGE)),
     }
 
 
@@ -223,7 +220,6 @@ def apply_state_scenario(state: Mapping[str, Any], scenario: Scenario) -> dict[s
             "level": st["regime"]["level"] + delta.level,
             "slope": st["regime"]["slope"] + delta.slope,
             "curvature": st["regime"]["curvature"] + delta.curvature,
-            "liquidity": st["regime"].get("liquidity", 1.0) + delta.liquidity_shift,
         }
     )
 
@@ -240,8 +236,7 @@ def apply_state_scenario(state: Mapping[str, Any], scenario: Scenario) -> dict[s
 
     stressed["basis_curve_df"]["basis_bps"] += delta.basis_shift_bps + 0.5 * delta.basis_shift_bps * slope_term
     stressed["credit_assumptions"]["credit_spread_bps"] += delta.credit_shift_bps
-    liq_mult = 1.0 / max(stressed_regime["liquidity"], 1e-6)
-    stressed["friction_assumptions"]["funding_friction_bps"] += delta.friction_shift_bps * liq_mult
+    stressed["friction_assumptions"]["funding_friction_bps"] += delta.friction_shift_bps
 
     stressed = _validate_snapshot(stressed)
 
