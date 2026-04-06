@@ -51,3 +51,29 @@ def test_decomposition_identity_matches_synthetic_rate_function():
     out = all_in_funding_decomposition(0.065, foreign, basis, extra)
     synth = synthetic_domestic_funding_rate(foreign, basis, extra)
     assert math.isclose(out["synthetic_all_in"], synth)
+
+
+def test_cross_market_gap_and_directional_deltas_match_sign_conventions() -> None:
+    domestic = 0.072
+    foreign = 0.05
+    extra = 0.002
+
+    cheaper_synthetic = all_in_funding_decomposition(domestic, foreign, basis_spread=0.01, extra_spread=extra)
+    expensive_synthetic = all_in_funding_decomposition(domestic, foreign, basis_spread=0.03, extra_spread=extra)
+
+    assert cheaper_synthetic["cross_market_gap"] < 0
+    assert cheaper_synthetic["synthetic_all_in"] < cheaper_synthetic["domestic_all_in"]
+
+    assert expensive_synthetic["cross_market_gap"] > 0
+    assert expensive_synthetic["synthetic_all_in"] > expensive_synthetic["domestic_all_in"]
+
+
+def test_gap_identity_unaffected_by_equal_extra_spread_shift() -> None:
+    domestic = 0.069
+    foreign = 0.048
+    basis = 0.009
+
+    no_extra = all_in_funding_decomposition(domestic, foreign, basis, extra_spread=0.0)
+    with_extra = all_in_funding_decomposition(domestic, foreign, basis, extra_spread=0.004)
+
+    assert math.isclose(no_extra["cross_market_gap"], with_extra["cross_market_gap"], rel_tol=0.0, abs_tol=1e-12)
