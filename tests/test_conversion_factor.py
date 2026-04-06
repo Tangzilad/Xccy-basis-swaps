@@ -9,14 +9,7 @@ from src.analytics.conversion_factor import (
     translate_spread_bp,
     translate_spread_inverse_bp,
 )
-
-import math
-
-from src.analytics.conversion_factor import (
-    conversion_factor_from_fx,
-    translate_spread_bp,
-    translate_spread_inverse_bp,
-)
+from src.analytics.hedging import matched_vs_rolling_hedge_economics_bp
 from src.analytics.parity import cip_theoretical_forward
 
 
@@ -33,11 +26,15 @@ def test_simple_vs_curve_aware_conversion_factor_invariant_under_cip_inputs():
     assert math.isclose(simple_factor, curve_aware_factor, rel_tol=0.0, abs_tol=1e-12)
 
 
-def test_conversion_translation_round_trip_invariant():
+def test_huf_usd_spread_round_trip_invariant() -> None:
     cf = conversion_factor_from_fx(spot_huf_per_usd=365.0, forward_huf_per_usd=371.0)
-    original = -42.0
-    translated = translate_spread_bp(original, cf)
-    recovered = translate_spread_inverse_bp(translated, cf)
+    huf_spread_bp = -42.0
+
+    usd_spread_bp = translate_spread_bp(huf_spread_bp, cf)
+    recovered_huf_spread_bp = translate_spread_inverse_bp(usd_spread_bp, cf)
+
+    assert recovered_huf_spread_bp == pytest.approx(huf_spread_bp)
+
 
 def test_conversion_factor_simple_payload_and_alias():
     payload = conversion_factor_simple(spot_huf_per_usd=360.0, forward_huf_per_usd=372.0)
@@ -83,3 +80,25 @@ def test_translate_spread_with_payload_round_trip():
     usd_spread = translate_spread_bp(25.0, payload)
     huf_spread = translate_spread_inverse_bp(usd_spread, payload)
     assert huf_spread == pytest.approx(25.0)
+
+
+def test_matched_vs_rolling_stability_and_preferred_hedge_consistency() -> None:
+    matched_cost = 64.0
+    expected_rolling = 42.0
+    roll_risk = 18.0
+    risk_aversion = 1.0
+
+    out = matched_vs_rolling_hedge_economics_bp(
+        matched_hedge_cost_bp=matched_cost,
+        expected_rolling_cost_bp=expected_rolling,
+        roll_risk_proxy_bp=roll_risk,
+        risk_aversion_multiplier=risk_aversion,
+    )
+
+    assert out["risk_adjusted_rolling_cost_bp"] == pytest.approx(expected_rolling + roll_risk)
+    assert out["benefit_of_rolling_bp"] == pytest.approx(matched_cost - (expected_rolling + roll_risk))
+    assert out["preferred_hedge"] == "rolling"
+
+    tie = matched_vs_rolling_hedge_economics_bp(matched_cost, 50.0, 14.0, risk_aversion_multiplier=1.0)
+    assert tie["benefit_of_rolling_bp"] == pytest.approx(0.0)
+    assert tie["preferred_hedge"] == "matched"
