@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import math
 
-from src.analytics.funding import all_in_funding_decomposition, synthetic_domestic_funding_rate
+from src.analytics.funding import (
+    all_in_funding_decomposition,
+    issuance_decision_from_spreads,
+    synthetic_domestic_funding_rate,
+)
 
 
 def test_direct_vs_synthetic_funding_relationships():
@@ -77,3 +81,33 @@ def test_gap_identity_unaffected_by_equal_extra_spread_shift() -> None:
     with_extra = all_in_funding_decomposition(domestic, foreign, basis, extra_spread=0.004)
 
     assert math.isclose(no_extra["cross_market_gap"], with_extra["cross_market_gap"], rel_tol=0.0, abs_tol=1e-12)
+
+
+def test_worked_example_usd_recommendation_and_savings_magnitude() -> None:
+    decision = issuance_decision_from_spreads(
+        usd_spread_bp=200.0,
+        huf_spread_bp=100.0,
+        conversion_factor=1.091,
+        basis_bp=39.5,
+    )
+
+    usd = decision["USD"]
+    assert usd.preferred_route == "Issue HUF and swap into USD"
+    assert usd.synthetic_spread_bp < usd.direct_spread_bp
+    assert math.isclose(usd.synthetic_spread_bp, 148.6, rel_tol=0.0, abs_tol=1e-9)
+    assert 50.0 < usd.savings_bp < 53.0
+
+
+def test_worked_example_huf_reverse_rule_sign_and_magnitude() -> None:
+    decision = issuance_decision_from_spreads(
+        usd_spread_bp=200.0,
+        huf_spread_bp=100.0,
+        conversion_factor=1.091,
+        basis_bp=39.5,
+    )
+
+    huf = decision["HUF"]
+    assert huf.preferred_route == "Issue directly in HUF"
+    assert huf.synthetic_spread_bp > huf.direct_spread_bp
+    assert math.isclose(huf.synthetic_spread_bp, (200.0 - 39.5) / 1.091, rel_tol=0.0, abs_tol=1e-12)
+    assert 45.0 < huf.savings_bp < 48.0
