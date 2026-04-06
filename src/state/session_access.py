@@ -34,6 +34,13 @@ def is_canonical_market_state(state: Mapping[str, Any] | None) -> bool:
     return _is_snapshot(state.get("base_snapshot")) and _is_snapshot(state.get("stressed_snapshot"))
 
 
+def assert_canonical_top_level_keys(state: Mapping[str, Any]) -> None:
+    """Assert that canonical market-state top-level keys are present."""
+    missing = sorted(_CANONICAL_TOP_LEVEL_KEYS.difference(state.keys()))
+    if missing:
+        raise AssertionError(f"Canonical market_state missing top-level keys: {missing}")
+
+
 def _legacy_to_partial_canonical(state: Mapping[str, Any], seed: int) -> dict[str, Any]:
     """Strict one-place converter for pre-canonical UI payloads.
 
@@ -91,6 +98,7 @@ def normalize_session_market_state(session_state: Mapping[str, Any], *, seed: in
     else:
         canonical = ensure_market_state(None, seed=seed)
 
+    assert_canonical_top_level_keys(canonical)
     session_state["market_state"] = canonical
     return canonical
 

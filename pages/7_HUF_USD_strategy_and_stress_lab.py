@@ -138,6 +138,7 @@ def render_page() -> None:
     )
 
     context = get_canonical_market_context(st.session_state)
+    base_summary = context["summary_1y"]["base"]
     base_snapshot = context["base_snapshot"]
     stressed_snapshot = context["stressed_snapshot"]
 
@@ -146,6 +147,7 @@ def render_page() -> None:
     # --- Header with learning objectives ---
     render_page_header(6, "7. HUF/USD Strategy and Stress Lab")
     st.caption(f"Active scenario: **{context['state'].get('scenario', 'none')}**")
+    st.caption(f"Canonical 1Y baseline: spot={base_summary['spot_fx']:.2f}, basis={base_summary['basis_bps']:.1f} bps")
 
     # --- Delta metrics ---
     st.markdown("### Stress Impact Summary")

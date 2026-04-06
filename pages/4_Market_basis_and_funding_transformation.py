@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from shared_page_helpers import as_decimal, get_funding_params, render_page_footer, render_page_header
+from shared_page_helpers import render_page_footer, render_page_header
 from src.analytics.funding import (
     all_in_funding_decomposition,
     build_tenor_funding_table,
@@ -13,27 +13,6 @@ from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
 from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
 from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
-
-
-def _get_market_state(session_state: dict) -> object:
-    return session_state.get("market_state")
-
-
-def _normalize_role_from_state(raw_role: object) -> str:
-    role = str(raw_role or "").strip().lower()
-    if role in {"issuer", "investor", "treasury"}:
-        return role
-    if role in {"learning", "analyst", "risk"}:
-        return "treasury"
-    return "issuer"
-
-
-def _recommendation_state(delta_bp: float, friction_threshold_bp: float) -> tuple[str, str]:
-    if abs(delta_bp) <= friction_threshold_bp:
-        return "Within friction band", "🟡"
-    if delta_bp < 0:
-        return "Synthetic route preferred", "✅"
-    return "Direct route preferred", "⚠️"
 
 
 def _normalize_role_from_state(raw_role: object) -> str:
@@ -83,11 +62,6 @@ def render_page() -> None:
     )
 
     # --- Market context ---
-    m = get_funding_params(st.session_state)
-    usd = as_decimal(float(m["usd_rate"]))
-    huf = as_decimal(float(m["huf_rate"]))
-    basis = float(m["basis_bps"]) / 10_000.0
-    extra = float(m["extra_spread_bps"]) / 10_000.0
     market_context = get_canonical_market_context(st.session_state)
     base_snapshot = market_context["base_snapshot"]
     canonical_state = market_context["state"]
@@ -160,7 +134,6 @@ def render_page() -> None:
         help="Role-aware interpretation text is driven by this selector and persisted in canonical shell state.",
     )
     canonical_state["user_role"] = role
-    st.session_state["market_state"]["user_role"] = role
     st.caption(funding_role_interpretation(role))
 
     c1, c2 = st.columns(2)
