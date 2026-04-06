@@ -1,8 +1,25 @@
 from __future__ import annotations
 
-from src.analytics.parity import fair_value_comparison, implied_huf_rate_from_spot_forward, implied_usd_rate_from_spot_forward
+import streamlit as st
+
+from shared_page_helpers import (
+    as_decimal,
+    from_decimal,
+    get_market_params,
+    render_page_footer,
+    render_page_header,
+)
+from src.analytics.parity import (
+    fair_value_comparison,
+    implied_huf_rate_from_spot_forward,
+    implied_usd_rate_from_spot_forward,
+    parity_decomposition,
+    tenor_ladder_decomposition,
+    tenor_to_year_fraction,
+)
 from src.state.session_access import get_canonical_market_context
-from src.analytics.parity import parity_decomposition, tenor_ladder_decomposition, tenor_to_year_fraction
+from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
+from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
 
 TENOR_LADDER = ["3M", "6M", "1Y", "2Y", "5Y", "10Y"]
@@ -15,82 +32,55 @@ WORKED_EXAMPLE = {
 }
 
 
-def _as_decimal(v: float) -> float:
-    return v / 100.0 if v > 1 else v
-
-
-def _from_decimal(v: float) -> float:
-    return v * 100.0 if v < 1 else v
-
-
-def _get_market_state(session_state: dict) -> dict:
-    ms = session_state.get("market_state")
-    if isinstance(ms, dict) and "base_snapshot" in ms:
-        summary = get_canonical_market_context(session_state)["summary_1y"]["base"]
-        return {
-            "spot_fx": float(summary["spot_fx"]),
-            "usd_rate": float(summary["usd_rate"]),
-            "huf_rate": float(summary["huf_rate"]),
-            "basis_bps": float(summary["basis_bps"]),
-        }
-    if isinstance(ms, dict):
-        return ms
-    if ms is not None:
-        return {
-            "spot_fx": float(getattr(ms, "spot_fx", session_state.get("spot_fx", 365.0))),
-            "usd_rate": float(ms.huf_usd_curves["usd"].iloc[0]["usd_zero_rate"]),
-            "huf_rate": float(ms.huf_usd_curves["huf"].iloc[0]["huf_zero_rate"]),
-            "basis_bps": float(ms.basis_curve.iloc[0]["basis_bps"]),
-        }
-    fallback = {
-        "spot_fx": float(session_state.get("spot_fx", 365.0)),
-        "usd_rate": _as_decimal(float(session_state.get("base_rate", 4.25))),
-        "huf_rate": _as_decimal(float(session_state.get("quote_rate", 5.0))),
-        "basis_bps": float(session_state.get("cross_currency_basis_bps", -22.0)),
-    }
-    session_state["market_state"] = fallback
-    return fallback
-
-
 def render_page() -> None:
-    import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
-    from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
-
     st.set_page_config(page_title="3. Parity lab", page_icon="📘", layout="wide")
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[2]
 
+    # --- Market context ---
     summary = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
-    spot, usd, huf = float(summary["spot_fx"]), float(summary["usd_rate"]), float(summary["huf_rate"])
-    basis = float(summary["basis_bps"]) / 10_000.0
+    spot_ctx = float(summary["spot_fx"])
+    usd_ctx = float(summary["usd_rate"])
+    huf_ctx = float(summary["huf_rate"])
+    basis_ctx = float(summary["basis_bps"]) / 10_000.0
 
+    # --- Header with learning objectives ---
+    render_page_header(2, "3. Parity Lab")
+    st.caption("Inputs and outputs follow HUF per USD FX quote convention.")
+
+    # --- Quick tenor overview (from canonical state) ---
+    st.markdown("### Tenor Overview")
     rows = []
     for t in [0.25, 0.5, 1.0, 2.0]:
-        obs = spot * (1 + (huf + basis) * t) / (1 + usd * t)
-        rows.append({"tenor": t, **fair_value_comparison(spot, obs, usd, huf, t)})
+        obs = spot_ctx * (1 + (huf_ctx + basis_ctx) * t) / (1 + usd_ctx * t)
+        rows.append({"tenor": t, **fair_value_comparison(spot_ctx, obs, usd_ctx, huf_ctx, t)})
     one = next(r for r in rows if r["tenor"] == 1.0)
-    ih = implied_huf_rate_from_spot_forward(spot, one["observed_forward"], usd, 1.0)
-    iu = implied_usd_rate_from_spot_forward(spot, one["observed_forward"], huf, 1.0)
 
-    st.title("3. Parity lab")
     a, b, c = st.columns(3)
     a.metric("Observed 1Y", f"{one['observed_forward']:.4f}")
     b.metric("Fair 1Y", f"{one['fair_forward_no_basis']:.4f}")
     c.metric("Raw wedge", f"{one['raw_basis_wedge_bp']:.2f} bps")
-    st.line_chart({"tenor": [r["tenor"] for r in rows], "wedge": [r["raw_basis_wedge_bp"] for r in rows]}, x="tenor")
-    st.dataframe(rows, use_container_width=True)
-    st.write("Observed forwards are benchmarked versus no-basis CIP fair values.")
-    market_state = _get_market_state(st.session_state)
-    default_spot = float(market_state["spot_fx"])
-    default_usd = _from_decimal(float(market_state["usd_rate"]))
-    default_huf = _from_decimal(float(market_state["huf_rate"]))
 
-    st.title("3. Parity lab")
-    st.caption("Inputs and outputs follow HUF per USD FX quote convention.")
+    st.line_chart(
+        {"tenor": [r["tenor"] for r in rows], "wedge": [r["raw_basis_wedge_bp"] for r in rows]},
+        x="tenor",
+    )
 
-    button = getattr(st, "button", None)
-    if callable(button) and button("Worked example (HUF/USD)"):
+    learning_hint(
+        "The chart above shows how the raw basis wedge evolves across tenors. "
+        "In CIP-perfect markets this line would be flat at zero. Deviations reveal "
+        "balance-sheet constraints or hedging demand imbalances."
+    )
+
+    # --- Interactive parity decomposition ---
+    st.markdown("### Interactive Decomposition")
+
+    m = get_market_params(st.session_state)
+    default_spot = float(m["spot_fx"])
+    default_usd = from_decimal(float(m["usd_rate"]))
+    default_huf = from_decimal(float(m["huf_rate"]))
+
+    if st.button("Load worked example (HUF/USD)"):
         st.session_state["parity_spot"] = WORKED_EXAMPLE["spot"]
         st.session_state["parity_forward"] = WORKED_EXAMPLE["observed_forward"]
         st.session_state["parity_usd_rate_pct"] = WORKED_EXAMPLE["usd_rate"]
@@ -123,7 +113,6 @@ def render_page() -> None:
             index=TENOR_LADDER.index(st.session_state.get("parity_tenor", "1Y")),
             key="parity_tenor",
         )
-
     with right:
         usd_rate_pct = float(
             st.number_input(
@@ -154,6 +143,8 @@ def render_page() -> None:
         year_fraction=tenor_years,
     )
 
+    # --- Metrics ---
+    st.markdown("### Results")
     c1, c2, c3 = st.columns(3)
     c1.metric("CIP-implied forward", f"{breakdown['cip_implied_forward']:.4f}")
     c2.metric("Implied HUF rate", f"{breakdown['implied_huf_rate']:.4%}")
@@ -171,6 +162,8 @@ def render_page() -> None:
         "A **negative** wedge means observed forward is low vs CIP and synthetic USD funding is cheaper."
     )
 
+    # --- Tenor ladder ---
+    st.markdown("### Tenor Ladder")
     ladder = tenor_ladder_decomposition(
         spot_huf_per_usd=spot,
         usd_rate=usd_rate,
@@ -179,8 +172,6 @@ def render_page() -> None:
         anchor_observed_forward=observed_forward,
         anchor_tenor_label=tenor_label,
     )
-
-    st.subheader("Tenor ladder")
     st.line_chart(
         {
             "tenor": [row["tenor"] for row in ladder],
@@ -196,7 +187,6 @@ def render_page() -> None:
         },
         x="tenor",
     )
-
     st.dataframe(
         [
             {
@@ -212,8 +202,13 @@ def render_page() -> None:
         use_container_width=True,
     )
 
-    learning_hint("Persistent wedge signals parity stress.")
+    learning_hint(
+        "Compare the two forward curves above. Where they diverge most is where basis "
+        "pressure is greatest. Ask yourself: is the wedge driven by rate differentials, "
+        "FX supply-demand, or balance-sheet constraints?"
+    )
 
+    # --- Calculation windows ---
     calc_windows = {
         "theoretical_forward": CalculationWindow(
             "Theoretical forward",
@@ -257,28 +252,31 @@ def render_page() -> None:
             "Friction-adjusted arbitrage band",
             r"\text{Net edge}=\text{Raw wedge}-\text{Frictions}",
             "Friction inputs are not modelled on this page; interpret raw wedge before costs.",
-            result="N/A on this page",
+            result="See page 5",
         ),
         "hedged_pickup": CalculationWindow(
             "Hedged pickup",
             r"\text{Pickup}=\text{Carry}-\text{Hedge costs}",
-            "Carry and hedge implementation are shown in later pages.",
-            result="N/A on this page",
+            "Carry and hedge implementation are shown in page 6.",
+            result="See page 6",
         ),
         "conversion_factor": CalculationWindow(
             "Conversion factor",
             r"CF=F/S",
             f"$CF={observed_forward:.4f}/{spot:.4f}$",
-            result=f"{observed_forward/spot:.6f}",
+            result=f"{observed_forward / spot:.6f}",
         ),
         "stressed_vs_base_deltas": CalculationWindow(
             "Stressed vs base deltas",
             r"\Delta x = x_{stress}-x_{base}",
             "This page displays current-state decomposition only.",
-            result="N/A on this page",
+            result="See page 7",
         ),
     }
     render_required_calculation_windows(calc_windows, default_expanded=False)
+
+    # --- Pedagogical footer ---
+    render_page_footer(2)
 
 
 if __name__ == "__main__":

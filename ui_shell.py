@@ -22,7 +22,22 @@ LEARNING_PATH = [
     "5. Persistence / XVA / arbitrage limits",
     "6. Hedged pickup and hedge choice",
     "7. HUF/USD strategy and stress lab",
+    "8. Consolidated dashboard",
+    "9. Glossary",
 ]
+
+# Maps page indices (0-based, matching LEARNING_PATH step numbers) to page labels.
+_PAGE_LABELS = {
+    0: "Start here",
+    1: "XCCY mechanics",
+    2: "Parity lab",
+    3: "Funding transformation",
+    4: "Persistence / XVA",
+    5: "Hedged pickup",
+    6: "Strategy & stress",
+    7: "Dashboard",
+    8: "Glossary",
+}
 
 SCENARIO_OPTIONS = {
     "none": "No scenario",
@@ -45,13 +60,40 @@ def _sync_sidebar_fields() -> None:
     st.session_state.spot_fx = float(summary["spot_fx"])
     st.session_state.cross_currency_basis_bps = float(summary["cross_currency_basis_bps"])
 
-
     # Legacy convenience keys used by some pages.
     market_state = st.session_state["market_state"]
     market_state["usd_rate"] = st.session_state.base_rate / 100.0
     market_state["huf_rate"] = st.session_state.quote_rate / 100.0
     market_state["basis_bps"] = st.session_state.cross_currency_basis_bps
     market_state["spot_fx"] = st.session_state.spot_fx
+
+
+def _mark_page_visited(page_index: int) -> None:
+    """Track which pages the user has visited for progress display."""
+    visited = st.session_state.get("visited_pages", set())
+    if not isinstance(visited, set):
+        visited = set(visited)
+    visited.add(page_index)
+    st.session_state["visited_pages"] = visited
+
+
+def _render_progress_tracker() -> None:
+    """Show a visual progress tracker in the sidebar."""
+    visited = st.session_state.get("visited_pages", set())
+    if not isinstance(visited, set):
+        visited = set(visited)
+
+    total = len(_PAGE_LABELS)
+    completed = len(visited & set(_PAGE_LABELS.keys()))
+    pct = completed / total if total > 0 else 0
+
+    st.sidebar.markdown("### Progress")
+    st.sidebar.progress(pct, text=f"{completed}/{total} lessons visited")
+
+    for idx, label in _PAGE_LABELS.items():
+        marker = "~~" if idx in visited else ""
+        check = " :white_check_mark:" if idx in visited else ""
+        st.sidebar.caption(f"{marker}{idx}. {label}{marker}{check}")
 
 
 def ensure_market_state_initialized() -> None:
@@ -61,6 +103,7 @@ def ensure_market_state_initialized() -> None:
     st.session_state.setdefault("selected_scenario", "none")
     st.session_state.setdefault("custom_scenario_magnitude", 0.5)
     st.session_state.setdefault("market_narrative", "Canonical market state drives all pages.")
+    st.session_state.setdefault("visited_pages", set())
 
     st.session_state["market_state"] = ensure_market_state(
         st.session_state.get("market_state"),
@@ -82,25 +125,34 @@ def render_global_shell(*, page_context: str = "overview") -> None:
     _ = page_context
     ensure_market_state_initialized()
 
+    # Determine current page index for progress tracking.
+    suggested = st.session_state.get("suggested_page", LEARNING_PATH[0])
+    for i, step in enumerate(LEARNING_PATH):
+        if step == suggested:
+            _mark_page_visited(i)
+            break
+
+    # --- Mode selector ---
+    st.sidebar.markdown("### Settings")
+    mode = st.sidebar.radio("Mode", ["Learning", "Basic"], index=0 if st.session_state.get("mode") == "Learning" else 1)
+    st.session_state["mode"] = mode
+
+    # --- Scenario controls ---
+    st.sidebar.markdown("### Scenario")
     scenario_keys = list(SCENARIO_OPTIONS.keys())
     current = st.session_state.get("selected_scenario", "none")
     default_index = scenario_keys.index(current) if current in scenario_keys else 0
 
-    selectbox = getattr(st, "selectbox", None)
-    if callable(selectbox):
-        scenario = selectbox(
-            "Scenario",
-            options=scenario_keys,
-            format_func=lambda k: SCENARIO_OPTIONS[k],
-            index=default_index,
-        )
-        st.session_state.selected_scenario = scenario
-    else:
-        scenario = current
+    scenario = st.sidebar.selectbox(
+        "Scenario",
+        options=scenario_keys,
+        format_func=lambda k: SCENARIO_OPTIONS[k],
+        index=default_index,
+    )
+    st.session_state.selected_scenario = scenario
 
-    slider = getattr(st, "slider", None)
-    if scenario.startswith("custom_") and callable(slider):
-        st.session_state.custom_scenario_magnitude = slider(
+    if scenario.startswith("custom_"):
+        st.session_state.custom_scenario_magnitude = st.sidebar.slider(
             "Custom scenario magnitude",
             min_value=0.1,
             max_value=2.0,
@@ -108,14 +160,16 @@ def render_global_shell(*, page_context: str = "overview") -> None:
             step=0.05,
         )
 
-    button = getattr(st, "button", None)
-    if callable(button) and button("Regenerate market"):
+    if st.sidebar.button("Regenerate market"):
         st.session_state["market_state"] = regenerate_market_state(st.session_state["market_state"])
         st.session_state.selected_scenario = "none"
 
-    if callable(button) and button("Apply scenario"):
+    if st.sidebar.button("Apply scenario"):
         chosen = _pick_scenario(scenario)
         if chosen is not None:
             st.session_state["market_state"] = apply_state_scenario(st.session_state["market_state"], chosen)
 
     _sync_sidebar_fields()
+
+    # --- Progress tracker ---
+    _render_progress_tracker()

@@ -1,74 +1,27 @@
 from __future__ import annotations
 
-from src.analytics.funding import all_in_funding_decomposition
-from src.state.session_access import get_canonical_market_context
+import streamlit as st
+
+from shared_page_helpers import as_decimal, get_funding_params, render_page_footer, render_page_header
 from src.analytics.funding import (
+    all_in_funding_decomposition,
     build_tenor_funding_table,
-    funding_calculation_windows_payload,
-    funding_role_interpretation,
     issuance_choice,
 )
-
-
-def _as_decimal(v: float) -> float:
-    return v / 100.0 if v > 1 else v
-
-
-def _get_market_state(session_state: dict) -> dict:
-    ms = session_state.get("market_state")
-    if isinstance(ms, dict) and "base_snapshot" in ms:
-        summary = get_canonical_market_context(session_state)["summary_1y"]["base"]
-        return {
-            "usd_rate": float(summary["usd_rate"]),
-            "huf_rate": float(summary["huf_rate"]),
-            "basis_bps": float(summary["basis_bps"]),
-            "extra_spread_bps": 12.0,
-        }
-    if isinstance(ms, dict):
-        return ms
-    if ms is not None:
-        return {
-            "usd_rate": float(ms.huf_usd_curves["usd"].iloc[0]["usd_zero_rate"]),
-            "huf_rate": float(ms.huf_usd_curves["huf"].iloc[0]["huf_zero_rate"]),
-            "basis_bps": float(ms.basis_curve.iloc[0]["basis_bps"]),
-            "extra_spread_bps": 12.0,
-        }
-    fallback = {
-        "usd_rate": _as_decimal(float(session_state.get("base_rate", 4.25))),
-        "huf_rate": _as_decimal(float(session_state.get("quote_rate", 5.0))),
-        "basis_bps": float(session_state.get("cross_currency_basis_bps", -22)),
-        "extra_spread_bps": 12.0,
-    }
-    session_state["market_state"] = fallback
-    return fallback
+from src.state.session_access import get_canonical_market_context
+from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
 
 def render_page() -> None:
-    import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
-    from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
-
     st.set_page_config(page_title="4. Market basis and funding transformation", page_icon="📘", layout="wide")
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[3]
 
-    base_snapshot = get_canonical_market_context(st.session_state)["base_snapshot"]
-    usd_df = base_snapshot["usd_curve_df"].set_index("tenor")
-    huf_df = base_snapshot["huf_curve_df"].set_index("tenor")
-    basis_df = base_snapshot["basis_curve_df"].set_index("tenor")
-
-    rows = []
-    extra = 12.0 / 10_000.0
-    for tenor in ["3M", "6M", "1Y", "2Y", "5Y"]:
-        usd = float(usd_df.loc[tenor, "usd_zero_rate"])
-        huf = float(huf_df.loc[tenor, "huf_zero_rate"])
-        basis = float(basis_df.loc[tenor, "basis_bps"]) / 10_000.0
-        rows.append({"Tenor": tenor, **all_in_funding_decomposition(usd, huf, basis, extra)})
-
-    one = next(r for r in rows if r["Tenor"] == "1Y")
-    m = _get_market_state(st.session_state)
-    usd = _as_decimal(float(m["usd_rate"]))
-    huf = _as_decimal(float(m["huf_rate"]))
+    # --- Market context ---
+    m = get_funding_params(st.session_state)
+    usd = as_decimal(float(m["usd_rate"]))
+    huf = as_decimal(float(m["huf_rate"]))
     basis = float(m["basis_bps"]) / 10_000.0
     extra = float(m["extra_spread_bps"]) / 10_000.0
 
@@ -99,20 +52,88 @@ def render_page() -> None:
         swapped_rate=float(one["USD synthetic"]),
     )
 
-    st.title("4. Market basis and funding transformation")
+    # --- Header with learning objectives ---
+    render_page_header(3, "4. Market Basis and Funding Transformation")
+
+    # --- Metrics ---
     a, b, c = st.columns(3)
-    a.metric("Direct all-in", f"{one['HUF direct']:.3%}")
-    b.metric("Synthetic all-in", f"{one['HUF synthetic']:.3%}")
+    a.metric("Direct HUF all-in (1Y)", f"{one['HUF direct']:.3%}")
+    b.metric("Synthetic HUF all-in (1Y)", f"{one['HUF synthetic']:.3%}")
     c.metric("Gap", f"{one['HUF delta'] * 10000:.2f} bps")
-    st.line_chart({"Tenor": [r['Tenor'] for r in rows], "gap": [r['HUF delta'] for r in rows]}, x="Tenor")
+
+    # --- Charts and data ---
+    st.markdown("### Funding Gap Across Tenors")
+    st.line_chart(
+        {"Tenor": [r["Tenor"] for r in rows], "HUF gap": [r["HUF delta"] for r in rows], "USD gap": [r["USD delta"] for r in rows]},
+        x="Tenor",
+    )
     st.dataframe(rows, use_container_width=True)
-    st.write("Funding transformation compares domestic route versus foreign-plus-basis route.")
-    learning_hint("Positive gap means synthetic route is less economical.")
-    render_calculation_windows([
-        CalculationWindow("Domestic all-in", r"r_{dom}=r_{domcurve}+s_{extra}", f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$", ("Costs add positively.",), result=f"{one['HUF direct']:.4%}"),
-        CalculationWindow("Synthetic all-in", r"r_{syn}=r_{forcurve}+b+s_{extra}", f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$", ("Positive basis raises synthetic cost.",), result=f"{one['HUF synthetic']:.4%}"),
-        CalculationWindow("Cross-market gap", r"\Delta r=r_{syn}-r_{dom}", f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$", ("Positive gap: synthetic is worse.",), result=f"{one['HUF delta'] * 10000:.2f} bps"),
-    ])
+
+    # --- Issuance recommendations ---
+    st.markdown("### Issuance Route Recommendations")
+    rec_l, rec_r = st.columns(2)
+    with rec_l:
+        st.markdown(f"**HUF funding:** {huf_choice.preferred_route}")
+        st.metric("HUF savings", f"{huf_choice.savings_bp:.1f} bps")
+    with rec_r:
+        st.markdown(f"**USD funding:** {usd_choice.preferred_route}")
+        st.metric("USD savings", f"{usd_choice.savings_bp:.1f} bps")
+
+    st.markdown(
+        "Funding transformation compares the direct issuance route versus the "
+        "foreign-currency-plus-basis route. The cheaper path depends on the sign "
+        "and magnitude of the cross-currency basis at each tenor."
+    )
+
+    learning_hint(
+        "Notice how the gap can flip sign across tenors. This happens because basis spreads, "
+        "curve slopes, and extra spreads interact differently at different maturities. "
+        "A treasurer must evaluate the full tenor structure, not just the 1Y point."
+    )
+
+    # --- Calculation windows ---
+    render_calculation_windows(
+        [
+            CalculationWindow(
+                "Direct HUF all-in",
+                r"r_{dir,dom}=r_{domcurve}+s_{extra}",
+                f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$",
+                ("Costs add positively.",),
+                result=f"{one['HUF direct']:.4%}",
+            ),
+            CalculationWindow(
+                "Synthetic HUF all-in",
+                r"r_{syn,dom}=r_{forcurve}+b+s_{extra}",
+                f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$",
+                ("Positive basis raises synthetic cost.",),
+                result=f"{one['HUF synthetic']:.4%}",
+            ),
+            CalculationWindow(
+                "Cross-market gap",
+                r"\Delta r=r_{syn}-r_{dom}",
+                f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$",
+                ("Positive gap: synthetic is more expensive. Negative gap: synthetic saves money.",),
+                result=f"{one['HUF delta'] * 10000:.2f} bps",
+            ),
+            CalculationWindow(
+                "HUF issuance choice",
+                r"\Delta_{dom}=r_{syn,dom}-r_{dir,dom}",
+                f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$",
+                ("Negative delta means swapped issuance is cheaper.",),
+                result=f"{huf_choice.preferred_route}; savings {huf_choice.savings_bp:.2f} bps",
+            ),
+            CalculationWindow(
+                "USD issuance choice",
+                r"\Delta_{for}=r_{syn,for}-r_{dir,for}",
+                f"${one['USD synthetic']:.6f}-{one['USD direct']:.6f}$",
+                ("Negative delta means swapped issuance is cheaper.",),
+                result=f"{usd_choice.preferred_route}; savings {usd_choice.savings_bp:.2f} bps",
+            ),
+        ]
+    )
+
+    # --- Pedagogical footer ---
+    render_page_footer(3)
 
 
 if __name__ == "__main__":
