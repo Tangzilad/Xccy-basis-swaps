@@ -28,52 +28,99 @@ A BIS-backed narrative (widely discussed in BIS Quarterly Reviews) is that persi
 
 In this simulator, that intuition is encoded by allowing basis to move with stress, only partially mean-revert, and remain away from zero for extended periods.
 
-## Exact learning sequence
-The app is intentionally taught in this sequence:
+## Exact learning sequence (current pages)
+The app is intentionally taught in this sequence, matching the current Streamlit page files and the HUF/USD-focused lab progression:
 
-1. **Mechanics**
-   - Instrument anatomy: legs, notionals, reset/pay conventions, FX translation.
-2. **Parity**
-   - Build CIP intuition from spot/forward/rates and identify the no-arbitrage benchmark.
-3. **Wedge**
-   - Define basis as the observed wedge from frictionless parity and map its sign.
-4. **Funding transformation**
-   - Reframe the swap as synthetic term funding transformation across currencies.
-5. **Persistence / frictions**
-   - Introduce balance-sheet costs, regulation, and flow imbalances as persistence drivers.
-6. **Hedge choice**
-   - Compare hedge implementations (tenor, roll profile, sensitivity trade-offs).
-7. **Stress lab**
-   - Apply shocks/regimes and interpret PnL, carry, and hedge performance.
+1. **Start here** (`app.py`)
+   - Shared state orientation, scenario status, and base-vs-stressed snapshot comparison.
+2. **XCCY mechanics** (`pages/2_XCCY_mechanics.py`)
+   - Instrument anatomy and leg-level intuition.
+3. **Parity lab** (`pages/3_Parity_lab.py`)
+   - CIP benchmark construction from spot and curves.
+4. **Market basis and funding transformation** (`pages/4_Market_basis_and_funding_transformation.py`)
+   - Wedge interpretation and synthetic funding translation.
+5. **Persistence / XVA / arbitrage limits** (`pages/5_Persistence_XVA_arbitrage_limits.py`)
+   - Balance-sheet constraints, frictions, and persistence channels.
+6. **Hedged pickup and hedge choice** (`pages/6_Hedged_pickup_and_hedge_choice.py`)
+   - Strategy trade-offs across carry, risk, and implementation.
+7. **HUF/USD strategy and stress lab** (`pages/7_HUF_USD_strategy_and_stress_lab.py`)
+   - End-to-end scenario stress exercise on the canonical HUF/USD state.
 
-## Canonical market-state schema
-To keep the pedagogy coherent, pages operate on a canonical market-state object. Conceptually:
+## Canonical market-state contract (real implementation)
+All pages consume a shared canonical object in `st.session_state["market_state"]`.
+
+### Top-level keys in session canonical state
+The required top-level keys are:
 
 ```text
-MarketState
-  - pair: str                  # e.g., EUR/USD, USD/JPY
-  - tenor_years: float         # hedge horizon / swap tenor
-  - spot_fx: float             # domestic per unit foreign (or app convention)
-  - fwd_fx: float              # implied/observed forward level
-  - r_domestic: float          # domestic reference rate
-  - r_foreign: float           # foreign reference rate
-  - basis_bps: float           # cross-currency basis (signed)
-  - curve_domestic: dict       # tenor -> rate
-  - curve_foreign: dict        # tenor -> rate
-  - vol_fx: float              # stylized FX volatility state
-  - stress_regime: str         # baseline/stress/normalization/etc.
-  - liquidity_score: float     # stylized intermediation capacity proxy
+market_state
+  - seed: int
+  - regime: dict[str, Any]  # name, level, slope, curvature, noise_scale
+  - base_snapshot: dict[str, Any]
+  - stressed_snapshot: dict[str, Any]
+  - scenario: str
 ```
 
-### How sidebar controls mutate state
-Sidebar inputs are explicit state mutators:
-- **Pair / tenor selectors** → update `pair`, `tenor_years`, and applicable curve templates.
-- **Spot/rate sliders** → update `spot_fx`, `r_domestic`, `r_foreign`, and forward parity baseline.
-- **Basis control** → directly shocks `basis_bps` around the parity anchor.
-- **Regime selector** → updates `stress_regime`, volatility presets, persistence parameters, and scenario overlays.
-- **Custom shock toggles** → apply additive or multiplicative deltas to rates/basis/FX before valuation.
+Notes:
+- `base_snapshot` is the anchor state used for "current market".
+- `stressed_snapshot` is scenario-adjusted while preserving the same schema.
+- `scenario` is `"none"` unless a scenario is applied via shell controls.
 
-Each page reads from the same state snapshot, then computes valuations/risk decomposition from that snapshot to maintain narrative consistency.
+### Snapshot dataframe structure
+Each snapshot (`base_snapshot` and `stressed_snapshot`) includes:
+
+- `tenors: list[str]`
+- `spot_fx: float`
+- `regime_summary: dict`
+- `usd_curve_df` columns:
+  - `tenor`, `years`, `usd_zero_rate`, `discount_factor`
+- `huf_curve_df` columns:
+  - `tenor`, `years`, `huf_zero_rate`, `discount_factor`
+- `theoretical_forward_df` columns:
+  - `tenor`, `years`, `theoretical_forward`
+- `market_forward_df` columns:
+  - `tenor`, `years`, `market_forward`
+- `basis_curve_df` columns:
+  - `tenor`, `years`, `basis_bps`, `implied_basis_decimal`
+- `credit_assumptions` columns:
+  - `tenor`, `years`, `credit_spread_bps`, `credit_spread_decimal`
+- `friction_assumptions` columns:
+  - `tenor`, `years`, `funding_friction_bps`, `funding_friction_decimal`
+
+### Controller responsibilities
+`src/controllers/market_state_controller.py` owns mutation and validation of canonical state:
+
+- **Initialization / canonicalization**
+  - `ensure_market_state(...)` guarantees required top-level keys and snapshots.
+  - `regenerate_market_state(...)` refreshes base snapshot from seed/regime and resets stress.
+- **Scenario pipeline**
+  - `build_custom_scenario(...)` maps custom UI choices to scenario definitions.
+  - `apply_state_scenario(...)` transforms only the stressed snapshot and records scenario name.
+- **Invariant enforcement**
+  - `clip_regime(...)` bounds regime parameters.
+  - `_validate_snapshot(...)` clips spot/rates/spreads/forwards and recomputes market forwards.
+- **Shell-facing summary**
+  - `summarize_for_shell(...)` exports 1Y controls (rates, spot, basis) for UI display.
+  - `make_stress_table(...)` builds base-vs-stressed basis deltas.
+
+### Shell mutation flow
+The global shell (`ui_shell.py`) mutates state through an explicit flow:
+
+1. `ensure_market_state_initialized()` seeds defaults and hydrates canonical state.
+2. `get_canonical_market_context(...)` normalizes legacy payloads to canonical shape.
+3. Scenario selection is captured in `selected_scenario`.
+4. **Regenerate market** button:
+   - calls `regenerate_market_state(...)`
+   - resets scenario to `"none"`.
+5. **Apply scenario** button:
+   - builds scenario (library or custom),
+   - calls `apply_state_scenario(...)`,
+   - updates `stressed_snapshot` and `scenario`.
+6. `_sync_sidebar_fields()` mirrors canonical 1Y summary into sidebar convenience fields:
+   - `base_rate`, `quote_rate`, `spot_fx`, `cross_currency_basis_bps`
+   - plus legacy convenience keys retained for backward page compatibility.
+
+Every page reads from the same canonical context, so pedagogy and calculations stay coherent while moving from mechanics to the HUF/USD stress lab.
 
 ## Built-in scenarios and regime parameters
 The simulator includes stylized regimes with compact parameter bundles and intuition:

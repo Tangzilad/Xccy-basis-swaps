@@ -48,10 +48,32 @@ def _build_streamlit_stub() -> types.ModuleType:
         }
     )
     stub.markdown_calls = []
+    stub.write_calls = []
+    stub.subheader_calls = []
+    stub.expander_labels = []
+    stub.text_area_calls = []
     stub.page_config_calls = 0
+    stub._button_returns = {}
 
     def _record_markdown(text, *args, **kwargs):
         stub.markdown_calls.append(str(text))
+
+    def _record_write(text, *args, **kwargs):
+        stub.write_calls.append(str(text))
+
+    def _record_subheader(text, *args, **kwargs):
+        stub.subheader_calls.append(str(text))
+
+    def _record_expander(label, *args, **kwargs):
+        stub.expander_labels.append(str(label))
+        return _Ctx()
+
+    def _record_text_area(label, *args, **kwargs):
+        stub.text_area_calls.append(str(label))
+        return ""
+
+    def _record_button(label, *args, **kwargs):
+        return bool(stub._button_returns.get(label, False))
 
     def _record_page_config(*args, **kwargs):
         stub.page_config_calls += 1
@@ -60,7 +82,7 @@ def _build_streamlit_stub() -> types.ModuleType:
     stub.title = lambda *a, **k: None
     stub.caption = lambda *a, **k: None
     stub.markdown = _record_markdown
-    stub.write = lambda *a, **k: None
+    stub.write = _record_write
     stub.metric = lambda *a, **k: None
     stub.line_chart = lambda *a, **k: None
     stub.bar_chart = lambda *a, **k: None
@@ -69,7 +91,7 @@ def _build_streamlit_stub() -> types.ModuleType:
     stub.success = lambda *a, **k: None
     stub.info = lambda *a, **k: None
     stub.header = lambda *a, **k: None
-    stub.subheader = lambda *a, **k: None
+    stub.subheader = _record_subheader
     stub.divider = lambda *a, **k: None
     stub.segmented_control = lambda label, options, default=None, **k: default or options[0]
     stub.slider = lambda label, min_value, max_value, value, *a, **k: value
@@ -93,6 +115,10 @@ def _build_streamlit_stub() -> types.ModuleType:
     sidebar.button = lambda *a, **k: False
     sidebar.progress = lambda *a, **k: None
     stub.sidebar = sidebar
+    stub.expander = _record_expander
+    stub.text_area = _record_text_area
+    stub.button = _record_button
+    stub.sidebar = _Ctx()
     return stub
 
 
@@ -173,23 +199,43 @@ def test_calculation_panel_sections_present(monkeypatch):
 
     from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
 
+    def _window(title: str) -> CalculationWindow:
+        return CalculationWindow(
+            title=title,
+            concept_meaning="Concept",
+            why_it_matters="Why",
+            formula="x",
+            methodology_rationale="Method",
+            inputs_used="Inputs",
+            substituted_values="x",
+            derivation_steps=("Step",),
+            assumptions=("Assumption",),
+            interpretation="Interpretation",
+            common_misunderstandings=("Misunderstanding",),
+            result="Result",
+        )
+
     windows = {
-        "theoretical_forward": CalculationWindow("Theoretical forward", "x", "x"),
-        "implied_huf_rate": CalculationWindow("Implied HUF rate", "x", "x"),
-        "implied_usd_rate": CalculationWindow("Implied USD rate", "x", "x"),
-        "raw_basis_wedge": CalculationWindow("Raw basis wedge", "x", "x"),
-        "synthetic_funding_cost": CalculationWindow("Synthetic funding cost", "x", "x"),
-        "friction_adjusted_arbitrage_band": CalculationWindow("Friction-adjusted arbitrage band", "x", "x"),
-        "hedged_pickup": CalculationWindow("Hedged pickup", "x", "x"),
-        "conversion_factor": CalculationWindow("Conversion factor", "x", "x"),
-        "stressed_vs_base_deltas": CalculationWindow("Stressed vs base deltas", "x", "x"),
+        "theoretical_forward": _window("Theoretical forward"),
+        "implied_huf_rate": _window("Implied HUF rate"),
+        "implied_usd_rate": _window("Implied USD rate"),
+        "raw_basis_wedge": _window("Raw basis wedge"),
+        "synthetic_funding_cost": _window("Synthetic funding cost"),
+        "friction_adjusted_arbitrage_band": _window("Friction-adjusted arbitrage band"),
+        "hedged_pickup": _window("Hedged pickup"),
+        "conversion_factor": _window("Conversion factor"),
+        "stressed_vs_base_deltas": _window("Stressed vs base deltas"),
     }
 
-    render_required_calculation_windows(windows)
+    render_required_calculation_windows(
+        windows,
+        required_keys=tuple(windows),
+        page_name="smoke",
+    )
 
     body = "\n".join(stub.markdown_calls)
-    assert "**Formula**" in body
-    assert "**Substituted values**" in body
-    assert "**Sign convention notes**" in body
-    assert "**Assumptions**" in body
-    assert "**Result**" in body
+    assert "#### Formula" in body
+    assert "#### Substitution" in body
+    assert "#### Assumptions" in body
+    assert "#### Common misunderstandings" in body
+    assert "#### Result" in body
