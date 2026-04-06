@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.analytics.frictions import friction_adjusted_arbitrage_band_bp
 from src.state.session_access import get_canonical_market_context
 
@@ -12,6 +13,23 @@ def render_page() -> None:
     st.set_page_config(page_title="5. Persistence / XVA / arbitrage limits", page_icon="📘", layout="wide")
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[4]
+    st.title("5. Persistence / XVA / arbitrage limits")
+    render_pedagogical_scaffold(
+        st,
+        page_number=5,
+        learning_path=LEARNING_PATH,
+        quantitative_outputs=(
+            "Raw edge (bp)",
+            "Total friction band (bp)",
+            "Net edge by capacity multiplier",
+            "Actionability flag",
+        ),
+        derivation_items=(
+            ("Total friction stack", "Sum capital, funding, CVA/FVA, clearing, and liquidity frictions."),
+            ("Net edge", "Subtract friction band from raw wedge signal to get executable edge."),
+            ("Actionability test", "Check whether absolute raw edge exceeds friction threshold."),
+        ),
+    )
 
     summary = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
     raw = abs(float(summary["basis_bps"]))
@@ -38,7 +56,6 @@ def render_page() -> None:
         )
     base = next(r for r in rows if r["capacity"] == 1.0)
 
-    st.title("5. Persistence / XVA / arbitrage limits")
     a, b, c = st.columns(3)
     a.metric("Raw edge", f"{base['raw_edge_bp']:.2f} bps")
     b.metric("Friction", f"{base['total_friction_bp']:.2f} bps")

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from src.analytics.xccy_swap import SwapPeriod, cashflow_timeline, synthetic_funding_cost_outputs
+from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
 
 
@@ -26,6 +27,26 @@ def render_page() -> None:
     out = synthetic_funding_cost_outputs(spot, forward, huf_rate, basis, 1.0)
 
     st.title("2. XCCY mechanics")
+    render_pedagogical_scaffold(
+        st,
+        page_number=2,
+        learning_path=LEARNING_PATH,
+        quantitative_outputs=("Spot", "Basis (bps)", "Basis drag (bp)", "USD-leg cashflow timeline table"),
+        derivation_items=(
+            (
+                "Synthetic USD (no basis): derivation",
+                "Start from CIP with b=0 and solve for implied USD funding from spot, forward, and HUF rate.",
+            ),
+            (
+                "Synthetic USD (with basis): derivation",
+                "Add basis b to the HUF leg coupon before converting through forward/spot.",
+            ),
+            (
+                "Basis drag: derivation",
+                "Compute synthetic-with-basis minus synthetic-without-basis, then convert to basis points.",
+            ),
+        ),
+    )
     c1, c2, c3 = st.columns(3)
     c1.metric("Spot", f"{spot:.4f}")
     c2.metric("Basis", f"{basis * 10_000:.1f} bps")

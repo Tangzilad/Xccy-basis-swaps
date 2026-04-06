@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
 from src.analytics.parity import parity_decomposition, tenor_ladder_decomposition, tenor_to_year_fraction
 
@@ -32,13 +33,22 @@ def render_page() -> None:
     st.session_state.suggested_page = LEARNING_PATH[2]
 
     st.title("3. Parity lab")
-    a, b, c = st.columns(3)
-    a.metric("Observed 1Y", f"{one['observed_forward']:.4f}")
-    b.metric("Fair 1Y", f"{one['fair_forward_no_basis']:.4f}")
-    c.metric("Raw wedge", f"{one['raw_basis_wedge_bp']:.2f} bps")
-    st.line_chart({"tenor": [r["tenor"] for r in rows], "wedge": [r["raw_basis_wedge_bp"] for r in rows]}, x="tenor")
-    st.dataframe(rows, use_container_width=True)
-    st.write("Observed forwards are benchmarked versus no-basis CIP fair values.")
+    render_pedagogical_scaffold(
+        st,
+        page_number=3,
+        learning_path=LEARNING_PATH,
+        quantitative_outputs=(
+            "CIP-implied forward",
+            "Implied HUF and USD rates",
+            "Raw basis wedge (bp)",
+            "Tenor-ladder wedge profile",
+        ),
+        derivation_items=(
+            ("CIP forward formula", "Compute fair forward from spot and rate differential over tenor year fraction."),
+            ("Implied-rate inversion", "Rearrange parity once for implied HUF rate and once for implied USD rate."),
+            ("Raw wedge construction", "Take implied-minus-observed funding differential and express in bps."),
+        ),
+    )
     context = get_canonical_market_context(st.session_state)
     base_summary = context["summary_1y"]["base"]
     default_spot = float(base_summary["spot_fx"])
@@ -170,6 +180,11 @@ def render_page() -> None:
         ],
         use_container_width=True,
     )
+    one = next(row for row in ladder if row["tenor"] == "1Y")
+    a, b, c = st.columns(3)
+    a.metric("Observed 1Y", f"{one['observed_forward']:.4f}")
+    b.metric("Fair 1Y", f"{one['cip_implied_forward']:.4f}")
+    c.metric("Raw wedge", f"{one['raw_basis_wedge_bp']:.2f} bps")
 
     learning_hint("Persistent wedge signals parity stress.")
 
