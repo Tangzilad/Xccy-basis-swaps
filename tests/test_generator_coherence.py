@@ -3,8 +3,7 @@ import pytest
 np = pytest.importorskip("numpy")
 pytest.importorskip("pandas")
 
-
-from src.synthetic import market_generator as mg
+from src.synthetic import market_generator as mg  # noqa: E402
 
 
 def test_cip_consistent_baseline_forward_shape():

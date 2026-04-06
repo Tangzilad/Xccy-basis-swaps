@@ -9,7 +9,7 @@ impossible outputs.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, Mapping, Sequence
+from typing import Any, Dict, Mapping, Sequence
 
 import numpy as np
 import pandas as pd

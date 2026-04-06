@@ -11,7 +11,6 @@ from src.controllers.market_state_controller import (
     build_custom_scenario,
     ensure_market_state,
     regenerate_market_state,
-    summarize_for_shell,
 )
 from src.state.session_access import get_canonical_market_context
 

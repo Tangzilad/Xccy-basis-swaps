@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.controllers.market_state_controller import make_stress_table, summarize_for_shell
+from src.controllers.market_state_controller import make_stress_table
 from src.state.session_access import get_canonical_market_context
 from ui_shell import LEARNING_PATH, ensure_market_state_initialized, learning_hint, render_global_shell
 
