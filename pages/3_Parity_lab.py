@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from src.state.session_access import get_canonical_market_context
 from src.analytics.parity import parity_decomposition, tenor_ladder_decomposition, tenor_to_year_fraction
-
+from src.state.session_access import get_canonical_market_context
 
 TENOR_LADDER = ["3M", "6M", "1Y", "2Y", "5Y", "10Y"]
 WORKED_EXAMPLE = {
@@ -14,12 +13,12 @@ WORKED_EXAMPLE = {
 }
 
 
-def _as_decimal(v: float) -> float:
-    return v / 100.0 if v > 1 else v
-
-
 def _from_decimal(v: float) -> float:
     return v * 100.0 if v < 1 else v
+
+
+def _get_market_state(session_state: dict) -> object:
+    return session_state.get("market_state")
 
 
 def render_page() -> None:
@@ -32,13 +31,6 @@ def render_page() -> None:
     st.session_state.suggested_page = LEARNING_PATH[2]
 
     st.title("3. Parity lab")
-    a, b, c = st.columns(3)
-    a.metric("Observed 1Y", f"{one['observed_forward']:.4f}")
-    b.metric("Fair 1Y", f"{one['fair_forward_no_basis']:.4f}")
-    c.metric("Raw wedge", f"{one['raw_basis_wedge_bp']:.2f} bps")
-    st.line_chart({"tenor": [r["tenor"] for r in rows], "wedge": [r["raw_basis_wedge_bp"] for r in rows]}, x="tenor")
-    st.dataframe(rows, use_container_width=True)
-    st.write("Observed forwards are benchmarked versus no-basis CIP fair values.")
     context = get_canonical_market_context(st.session_state)
     base_summary = context["summary_1y"]["base"]
     default_spot = float(base_summary["spot_fx"])
@@ -111,6 +103,21 @@ def render_page() -> None:
         year_fraction=tenor_years,
     )
 
+    ladder = tenor_ladder_decomposition(
+        spot_huf_per_usd=spot,
+        usd_rate=usd_rate,
+        huf_rate=huf_rate,
+        tenor_labels=TENOR_LADDER,
+        anchor_observed_forward=observed_forward,
+        anchor_tenor_label=tenor_label,
+    )
+    one = next(row for row in ladder if row["tenor"] == "1Y")
+
+    summary_a, summary_b, summary_c = st.columns(3)
+    summary_a.metric("Observed 1Y", f"{one['observed_forward']:.4f}")
+    summary_b.metric("Fair 1Y", f"{one['cip_implied_forward']:.4f}")
+    summary_c.metric("Raw wedge", f"{one['raw_basis_wedge_bp']:.2f} bps")
+
     st.subheader("Decomposition outputs")
     c1, c2, c3 = st.columns(3)
     c1.metric("CIP-implied forward", f"{breakdown['cip_implied_forward']:.4f}")
@@ -122,21 +129,10 @@ def render_page() -> None:
     c5.metric("Relative forward diff", f"{breakdown['forward_relative_bp']:.2f} bp")
     c6.metric("Raw basis wedge", f"{breakdown['raw_basis_wedge_bp']:.2f} bp")
 
-    sign_convention_text = (
-        "**Sign convention (HUF per USD):** "
-        "A **positive** raw basis wedge means the observed forward is high vs no-basis CIP, "
-        "so implied HUF funding is richer (worse for synthetic USD borrowing via HUF). "
-        "A **negative** wedge means observed forward is low vs CIP and synthetic USD funding is cheaper."
-    )
-    st.markdown(sign_convention_text)
-
-    ladder = tenor_ladder_decomposition(
-        spot_huf_per_usd=spot,
-        usd_rate=usd_rate,
-        huf_rate=huf_rate,
-        tenor_labels=TENOR_LADDER,
-        anchor_observed_forward=observed_forward,
-        anchor_tenor_label=tenor_label,
+    st.markdown(
+        "**Sign convention (HUF per USD):** A **positive** raw basis wedge means the observed forward "
+        "is high vs no-basis CIP, so implied HUF funding is richer. A **negative** wedge means "
+        "observed forward is low vs CIP and synthetic USD funding is cheaper."
     )
 
     st.subheader("Tenor ladder")
@@ -155,7 +151,6 @@ def render_page() -> None:
         },
         x="tenor",
     )
-
     st.dataframe(
         [
             {
@@ -170,6 +165,7 @@ def render_page() -> None:
         ],
         use_container_width=True,
     )
+    st.write("Observed forwards are benchmarked versus no-basis CIP fair values.")
 
     learning_hint("Persistent wedge signals parity stress.")
 
@@ -228,7 +224,7 @@ def render_page() -> None:
             "Conversion factor",
             r"CF=F/S",
             f"$CF={observed_forward:.4f}/{spot:.4f}$",
-            result=f"{observed_forward/spot:.6f}",
+            result=f"{observed_forward / spot:.6f}",
         ),
         "stressed_vs_base_deltas": CalculationWindow(
             "Stressed vs base deltas",
@@ -242,6 +238,4 @@ def render_page() -> None:
 
 
 if __name__ == "__main__":
-    render_page()
-else:
     render_page()
