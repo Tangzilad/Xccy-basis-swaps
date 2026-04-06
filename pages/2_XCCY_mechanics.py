@@ -56,9 +56,48 @@ def render_page() -> None:
     st.write("Mechanics are shown from the USD-receiver / HUF-payer perspective.")
     learning_hint("Positive cashflows are received by the USD leg receiver.")
     render_calculation_windows([
-        CalculationWindow("Synthetic USD (no basis)", r"r=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}", f"$S={spot:.4f}, F={forward:.4f}, r_{{HUF}}={huf_rate:.4%}$", ("Positive rate = higher funding cost.",), result=f"{out['synthetic_usd_rate_no_basis']:.4%}"),
-        CalculationWindow("Synthetic USD (with basis)", r"r=\frac{\frac{1+(r_{HUF}+b)T}{F/S}-1}{T}", f"$b={basis:.4%}$", ("Positive basis increases HUF coupon.",), result=f"{out['synthetic_usd_rate_with_basis']:.4%}"),
-        CalculationWindow("Basis drag", r"(r_{with}-r_{no})\times 10{,}000", f"$({out['synthetic_usd_rate_with_basis']:.6f}-{out['synthetic_usd_rate_no_basis']:.6f})\times10,000$", ("Positive drag means worse synthetic funding.",), result=f"{out['basis_drag_bp']:.2f} bp"),
+        CalculationWindow(
+            title="Synthetic USD (no basis)",
+            concept_meaning="Implied USD funding rate from spot-forward parity excluding basis.",
+            why_it_matters="This is the benchmark synthetic USD cost before basis distortions.",
+            formula=r"r=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}",
+            methodology_rationale="Invert CIP to recover the USD-equivalent funding rate.",
+            inputs_used=f"Spot/forward in HUF per USD, r_HUF={huf_rate:.4%}, tenor=1Y.",
+            substituted_values=f"$S={spot:.4f}, F={forward:.4f}, r_{{HUF}}={huf_rate:.4%}$",
+            derivation_steps=("Compute F/S.", "Apply parity inversion.", "Annualize over T=1."),
+            assumptions=("Simple annual compounding.",),
+            interpretation="Higher implied rate means more expensive synthetic USD borrowing.",
+            common_misunderstandings=("Ignoring quote convention can flip sign interpretation.",),
+            result=f"{out['synthetic_usd_rate_no_basis']:.4%}",
+        ),
+        CalculationWindow(
+            title="Synthetic USD (with basis)",
+            concept_meaning="Implied USD funding rate after adding cross-currency basis to HUF leg.",
+            why_it_matters="Shows the all-in synthetic USD funding cost faced in market quotes.",
+            formula=r"r=\frac{\frac{1+(r_{HUF}+b)T}{F/S}-1}{T}",
+            methodology_rationale="Basis shifts the HUF coupon used in parity reconstruction.",
+            inputs_used=f"Same as above plus basis b={basis:.4%}.",
+            substituted_values=f"$b={basis:.4%}$",
+            derivation_steps=("Shift HUF rate by b.", "Recompute implied USD rate.", "Compare with no-basis case."),
+            assumptions=("Basis is applied additively to the HUF leg.",),
+            interpretation="Positive basis increases synthetic USD cost in this setup.",
+            common_misunderstandings=("Treating basis as independent of forward pricing.",),
+            result=f"{out['synthetic_usd_rate_with_basis']:.4%}",
+        ),
+        CalculationWindow(
+            title="Basis drag",
+            concept_meaning="Incremental funding penalty from including basis.",
+            why_it_matters="Quantifies basis impact directly in basis points.",
+            formula=r"(r_{with}-r_{no})\times 10{,}000",
+            methodology_rationale="Take the difference between with/without-basis implied rates.",
+            inputs_used="Implied USD rates from previous two windows.",
+            substituted_values=f"$({out['synthetic_usd_rate_with_basis']:.6f}-{out['synthetic_usd_rate_no_basis']:.6f})\\times10,000$",
+            derivation_steps=("Subtract implied rates.", "Convert decimal rate difference to bps.",),
+            assumptions=("Both rates measured on the same tenor and compounding basis.",),
+            interpretation="Positive drag means worse synthetic funding.",
+            common_misunderstandings=("Confusing basis drag with outright level of USD rates.",),
+            result=f"{out['basis_drag_bp']:.2f} bp",
+        ),
     ])
 
 

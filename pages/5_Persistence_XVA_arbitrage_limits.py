@@ -65,9 +65,48 @@ def render_page() -> None:
     st.write("If the raw edge stays within the friction band, dislocations can persist.")
     learning_hint("Capacity and XVA multipliers control when arbitrage is truly executable.")
     render_calculation_windows([
-        CalculationWindow("Total friction", r"(\sum c_i)\times m_{cp}\times m_{cap}", f"$({capital_charge_bp}+{funding_spread_bp}+{cva_proxy_bp}+{fva_proxy_bp}+{clearing_friction_bp}+{liquidity_repo_friction_bp})$", ("All friction terms are costs.",), result=f"{base['total_friction_bp']:.2f} bps"),
-        CalculationWindow("Net edge", r"\text{Raw edge}-\text{Friction}", f"${base['raw_edge_bp']:.2f}-{base['total_friction_bp']:.2f}$", ("Positive net edge implies residual arbitrage value.",), result=f"{base['net_edge_bp']:.2f} bps"),
-        CalculationWindow("Actionability", r"|\text{Raw edge}|>\text{Friction}", f"$|{base['raw_edge_bp']:.2f}|>{base['total_friction_bp']:.2f}$", ("Must clear band to trade.",), result="Actionable" if base["is_actionable"] else "Not actionable"),
+        CalculationWindow(
+            title="Total friction",
+            concept_meaning="Aggregate implementation drag from capital, funding, XVA, and liquidity costs.",
+            why_it_matters="Defines the no-trade band around raw apparent arbitrage.",
+            formula=r"(\sum c_i)\times m_{cp}\times m_{cap}",
+            methodology_rationale="Sum individual friction components, then scale by multipliers.",
+            inputs_used="All friction components in bps, plus counterparty/capacity multipliers.",
+            substituted_values=f"$({capital_charge_bp}+{funding_spread_bp}+{cva_proxy_bp}+{fva_proxy_bp}+{clearing_friction_bp}+{liquidity_repo_friction_bp})$",
+            derivation_steps=("Sum component frictions.", "Apply multipliers.",),
+            assumptions=("Components are additive proxies.",),
+            interpretation="Higher friction widens persistence band.",
+            common_misunderstandings=("Comparing raw edges without netting implementation costs.",),
+            result=f"{base['total_friction_bp']:.2f} bps",
+        ),
+        CalculationWindow(
+            title="Net edge",
+            concept_meaning="Residual tradable edge after friction deduction.",
+            why_it_matters="Determines whether dislocation is economically exploitable.",
+            formula=r"\text{Raw edge}-\text{Friction}",
+            methodology_rationale="Subtract total friction from observed raw edge.",
+            inputs_used="Raw edge and total friction in bps.",
+            substituted_values=f"${base['raw_edge_bp']:.2f}-{base['total_friction_bp']:.2f}$",
+            derivation_steps=("Measure raw edge.", "Subtract friction estimate.",),
+            assumptions=("Friction estimate is contemporaneously valid.",),
+            interpretation="Positive net edge implies residual arbitrage value.",
+            common_misunderstandings=("Using absolute raw edge instead of net value for trade decisions.",),
+            result=f"{base['net_edge_bp']:.2f} bps",
+        ),
+        CalculationWindow(
+            title="Actionability",
+            concept_meaning="Binary executable-trade check against the friction band.",
+            why_it_matters="Converts valuation signal into operational decision criterion.",
+            formula=r"|\text{Raw edge}|>\text{Friction}",
+            methodology_rationale="Trade only when edge magnitude clears the cost band.",
+            inputs_used="Absolute raw edge and total friction, both in bps.",
+            substituted_values=f"$|{base['raw_edge_bp']:.2f}|>{base['total_friction_bp']:.2f}$",
+            derivation_steps=("Take absolute raw edge.", "Compare to friction threshold.",),
+            assumptions=("Execution can occur at modeled costs.",),
+            interpretation="True means edge is large enough to consider trading.",
+            common_misunderstandings=("Treating a positive raw edge as automatically actionable.",),
+            result="Actionable" if base["is_actionable"] else "Not actionable",
+        ),
     ])
 
 

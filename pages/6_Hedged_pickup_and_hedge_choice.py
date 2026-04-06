@@ -15,21 +15,26 @@ from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
 
 
-def _build_payload(session_state: dict) -> dict:
+def _get_market_state(session_state: dict) -> object:
+    return session_state.get("market_state")
+
+
+def _build_payload(session_state: dict) -> dict[str, object]:
     context = get_canonical_market_context(session_state)
     base_summary = context["summary_1y"]["base"]
+
     spot = float(base_summary["spot_fx"])
     usd = float(base_summary["usd_rate"])
     huf = float(base_summary["huf_rate"])
-    basis_bps = float(base_summary["basis_bps"])
-
+    basis = float(base_summary["basis_bps"])
     fwd_1y = spot * (1 + huf) / (1 + usd)
+
     simple_cf_payload = conversion_factor_simple(spot, fwd_1y)
     simple_cf = float(simple_cf_payload["conversion_factor"])
 
     tenor_years = [0.5, 1.0, 2.0]
-    forward_curve = [spot * (1 + huf * year) / (1 + usd * year) for year in tenor_years]
-    discount_factors = [1 / (1 + usd * year) for year in tenor_years]
+    forward_curve = [spot * (1 + huf * tenor) / (1 + usd * tenor) for tenor in tenor_years]
+    discount_factors = [1.0 / (1.0 + usd * tenor) for tenor in tenor_years]
     curve_cf_payload = conversion_factor_curve_aware(
         spot_huf_per_usd=spot,
         forward_huf_per_usd_by_tenor=forward_curve,
@@ -42,7 +47,7 @@ def _build_payload(session_state: dict) -> dict:
     gross_pickup_bp = translate_spread_bp(nominal_diff_bp, curve_cf)
     round_trip = spread_translation_round_trip_bp(nominal_diff_bp, curve_cf, tolerance_bp=1e-6)
 
-    rows = []
+    rows: list[dict[str, float | str]] = []
     for hedge_cost_bp in [20.0, 35.0, 50.0]:
         roll_payload = roll_cost_and_risk_proxy_bp(
             current_roll_cost_bp=hedge_cost_bp,
@@ -96,6 +101,8 @@ def render_page() -> None:
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[5]
 
+    payload = _build_payload(st.session_state)
+
     st.title("6. Hedged pickup and hedge choice")
     render_pedagogical_scaffold(
         st,
@@ -139,27 +146,48 @@ def render_page() -> None:
     render_calculation_windows(
         [
             CalculationWindow(
-                "Simple conversion factor",
-                r"CF_{simple}=F/S",
-                f"$F={payload['fwd_1y']:.4f}, S={payload['spot']:.4f}$",
-                ("Simple tenor-matched ratio for quote translation.",),
+                title="Simple conversion factor",
+                concept_meaning="Direct quote-space conversion ratio between forward and spot.",
+                why_it_matters="Provides a fast translation between HUF-bp and USD-bp scales.",
+                formula=r"CF_{simple}=F/S",
+                methodology_rationale="Use tenor-matched forward divided by spot.",
+                inputs_used="1Y forward and spot, both in HUF per USD.",
+                substituted_values=f"$F={payload['fwd_1y']:.4f}, S={payload['spot']:.4f}$",
+                derivation_steps=("Take forward/spot ratio.",),
+                assumptions=("Single-tenor approximation.",),
+                interpretation="Higher CF maps a given HUF spread into a larger USD spread.",
+                common_misunderstandings=("Assuming spot alone determines conversion.",),
                 result=f"{payload['simple_cf']:.6f}",
             ),
             CalculationWindow(
-                "Curve-aware conversion factor",
-                r"CF_{curve}=\sum_i w_i(F_i/S)",
-                f"$\\sum_i w_i=1, S={payload['spot']:.4f}$",
-                ("Weights use discount-factor annuity terms across tenor buckets.",),
+                title="Curve-aware conversion factor",
+                concept_meaning="Weighted conversion factor across tenor buckets.",
+                why_it_matters="Improves translation accuracy when carry lives across the curve.",
+                formula=r"CF_{curve}=\sum_i w_i(F_i/S)",
+                methodology_rationale="Apply annuity-style weights to tenor-specific forward ratios.",
+                inputs_used="Spot plus tenor ladder forwards and normalized weights.",
+                substituted_values=f"$\\sum_i w_i=1, S={payload['spot']:.4f}$",
+                derivation_steps=("Compute F_i/S for each tenor.", "Weight by w_i.", "Sum across tenors.",),
+                assumptions=("Weights represent relevant exposure profile.",),
+                interpretation="Divergence from simple CF indicates curve-shape effects.",
+                common_misunderstandings=("Treating conversion as a constant across maturities.",),
                 result=f"{payload['curve_cf']:.6f}",
             ),
             CalculationWindow(
-                "Spread translation round-trip",
-                r"\text{HUF bp}\to\text{USD bp}\to\text{HUF bp}",
-                (
+                title="Spread translation round-trip",
+                concept_meaning="Consistency check for conversion-factor mapping.",
+                why_it_matters="Verifies numerical stability and unit discipline of translations.",
+                formula=r"\text{HUF bp}\to\text{USD bp}\to\text{HUF bp}",
+                methodology_rationale="Translate out and back; residual should be near zero.",
+                inputs_used="Input HUF spread, computed USD translation, and reverse translation.",
+                substituted_values=(
                     f"${round_trip['huf_bp_in']:.2f}\\to{round_trip['usd_bp_translated']:.2f}"
                     f"\\to{round_trip['huf_bp_round_trip']:.2f}$"
                 ),
-                ("Residual near zero validates conversion consistency.",),
+                derivation_steps=("Translate HUF to USD using CF.", "Translate USD back to HUF.", "Measure residual.",),
+                assumptions=("Same CF convention used both directions.",),
+                interpretation="Residual near zero validates conversion consistency.",
+                common_misunderstandings=("Comparing translated values without checking round-trip error.",),
                 result=(
                     f"residual={round_trip['round_trip_residual_bp']:.6f} bp"
                     f" | tol={round_trip['tolerance_bp']:.6f}"
@@ -167,24 +195,38 @@ def render_page() -> None:
                 ),
             ),
             CalculationWindow(
-                "Pickup decomposition",
-                r"\text{Net}=\text{Gross}-\text{Hedge}-\text{Basis}-\text{Extra}",
-                (
+                title="Pickup decomposition",
+                concept_meaning="Net hedged pickup decomposition from gross carry to executable edge.",
+                why_it_matters="Shows where nominal differential is consumed by costs.",
+                formula=r"\text{Net}=\text{Gross}-\text{Hedge}-\text{Basis}-\text{Extra}",
+                methodology_rationale="Subtract each implementation drag from gross pickup.",
+                inputs_used="Gross pickup, hedge cost, basis drag, extra friction (bps).",
+                substituted_values=(
                     f"${base['gross_pickup_bp']:.2f}-{base['hedge_cost_bp']:.2f}"
                     f"-{base['basis_drag_bp']:.2f}-{base['extra_friction_bp']:.2f}$"
                 ),
-                ("Gross pickup is reduced by implementable hedge and friction terms.",),
+                derivation_steps=("Start from gross pickup.", "Subtract hedge and basis drag.", "Subtract residual frictions.",),
+                assumptions=("Cost terms are additive at the chosen horizon.",),
+                interpretation="Positive result indicates remaining hedged carry after costs.",
+                common_misunderstandings=("Equating nominal carry with realizable pickup.",),
                 result=f"{base['net_hedged_pickup_bp']:.2f} bps",
             ),
             CalculationWindow(
-                "Matched vs rolling hedge",
-                r"\text{RA roll}=C_{roll}+\lambda\cdot \sigma_{roll}",
-                (
+                title="Matched vs rolling hedge",
+                concept_meaning="Risk-adjusted comparison of hedge implementations.",
+                why_it_matters="Determines preferred hedge structure beyond expected carry.",
+                formula=r"\text{RA roll}=C_{roll}+\lambda\cdot \sigma_{roll}",
+                methodology_rationale="Penalize rolling strategy by volatility-scaled risk term.",
+                inputs_used="Matched cost, expected rolling cost, roll risk proxy, risk aversion.",
+                substituted_values=(
                     f"$C_m={base['matched_cost_bp']:.2f}, C_r={base['expected_rolling_cost_bp']:.2f},"
                     f" \\sigma={base['roll_risk_proxy_bp']:.2f},"
                     f" \\lambda={base['risk_aversion_multiplier']:.2f}$"
                 ),
-                ("Compare matched cost against risk-adjusted rolling cost.",),
+                derivation_steps=("Compute RA rolling cost.", "Compare against matched cost.", "Select cheaper risk-adjusted route.",),
+                assumptions=("Risk aversion multiplier is user-appropriate.",),
+                interpretation="Lower risk-adjusted cost determines preferred hedge.",
+                common_misunderstandings=("Choosing rolling solely on expected drift without risk penalty.",),
                 result=(
                     f"drift={base['expected_roll_drift_bp']:.2f}"
                     f" | RA roll={base['risk_adjusted_rolling_cost_bp']:.2f}"
@@ -196,6 +238,4 @@ def render_page() -> None:
 
 
 if __name__ == "__main__":
-    render_page()
-else:
     render_page()

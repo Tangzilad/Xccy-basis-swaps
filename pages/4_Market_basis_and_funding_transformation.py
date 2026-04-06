@@ -1,13 +1,33 @@
 from __future__ import annotations
 
-from src.analytics.funding import all_in_funding_decomposition
-from src.explainers.theory_panels import render_pedagogical_scaffold
-from src.state.session_access import get_canonical_market_context
 from src.analytics.funding import (
+    all_in_funding_decomposition,
     build_tenor_funding_table,
     funding_role_interpretation,
     issuance_choice,
 )
+from src.state.session_access import get_canonical_market_context
+
+
+def _get_market_state(session_state: dict) -> object:
+    return session_state.get("market_state")
+
+
+def _normalize_role_from_state(raw_role: object) -> str:
+    role = str(raw_role or "").strip().lower()
+    if role in {"issuer", "investor", "treasury"}:
+        return role
+    if role in {"learning", "analyst", "risk"}:
+        return "treasury"
+    return "issuer"
+
+
+def _recommendation_state(delta_bp: float, friction_threshold_bp: float) -> tuple[str, str]:
+    if abs(delta_bp) <= friction_threshold_bp:
+        return "Within friction band", "🟡"
+    if delta_bp < 0:
+        return "Synthetic route preferred", "✅"
+    return "Direct route preferred", "⚠️"
 
 
 def _normalize_role_from_state(raw_role: object) -> str:
@@ -65,11 +85,10 @@ def render_page() -> None:
         rows.append({"Tenor": tenor, **all_in_funding_decomposition(usd, huf, basis, extra)})
 
     one = next(r for r in rows if r["Tenor"] == "1Y")
-    summary = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
+    summary = market_context["summary_1y"]["base"]
     usd = float(summary["usd_rate"])
     huf = float(summary["huf_rate"])
     basis = float(summary["basis_bps"]) / 10_000.0
-    extra = 12.0 / 10_000.0
 
     tenors = ("3M", "6M", "1Y", "2Y", "5Y")
     scales = (0.9, 1.0, 1.05, 1.1, 1.2)
@@ -86,7 +105,7 @@ def render_page() -> None:
         foreign_curve_slope=0.0005,
     )
     one = next(r for r in rows if r["Tenor"] == "1Y")
-    friction_bps_1y = float(market_context["summary_1y"]["base"]["funding_friction_bps"])
+    friction_bps_1y = float(summary["funding_friction_bps"])
 
     huf_choice = issuance_choice(
         issue_currency="HUF",
@@ -165,13 +184,75 @@ def render_page() -> None:
     st.write("Funding transformation compares domestic route versus foreign-plus-basis route.")
     learning_hint("Positive gap means synthetic route is less economical.")
     render_calculation_windows([
-        CalculationWindow("Domestic all-in", r"r_{dom}=r_{domcurve}+s_{extra}", f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$", ("Costs add positively.",), result=f"{one['HUF direct']:.4%}"),
-        CalculationWindow("Synthetic all-in", r"r_{syn}=r_{forcurve}+b+s_{extra}", f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$", ("Positive basis raises synthetic cost.",), result=f"{one['HUF synthetic']:.4%}"),
-        CalculationWindow("Cross-market gap", r"\Delta r=r_{syn}-r_{dom}", f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$", ("Positive gap: synthetic is worse.",), result=f"{one['HUF delta'] * 10000:.2f} bps"),
+        CalculationWindow(
+            title="Domestic all-in",
+            concept_meaning="Direct domestic funding rate after extra spread adjustments.",
+            why_it_matters="Baseline comparator for synthetic funding alternatives.",
+            formula=r"r_{dom}=r_{domcurve}+s_{extra}",
+            methodology_rationale="Add implementation spread to underlying domestic curve rate.",
+            inputs_used="Domestic curve rate and extra spread in annualized percent.",
+            substituted_values=f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$",
+            derivation_steps=("Read direct curve rate.", "Add extra spread cost.",),
+            assumptions=("Spreads add linearly.",),
+            interpretation="Higher value means costlier direct HUF funding.",
+            common_misunderstandings=("Omitting extra spread understates true executable cost.",),
+            result=f"{one['HUF direct']:.4%}",
+        ),
+        CalculationWindow(
+            title="Synthetic all-in",
+            concept_meaning="Synthetic domestic funding from foreign curve plus basis and spread.",
+            why_it_matters="Shows the executable synthetic route cost.",
+            formula=r"r_{syn}=r_{forcurve}+b+s_{extra}",
+            methodology_rationale="Translate foreign funding route into domestic all-in cost.",
+            inputs_used="Foreign curve rate, basis, and extra spread.",
+            substituted_values=f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$",
+            derivation_steps=("Start from foreign direct rate.", "Add basis transfer.", "Add extra spread.",),
+            assumptions=("Basis enters additively in annualized terms.",),
+            interpretation="Positive basis lifts synthetic cost in this convention.",
+            common_misunderstandings=("Treating basis as optional when comparing executable routes.",),
+            result=f"{one['HUF synthetic']:.4%}",
+        ),
+        CalculationWindow(
+            title="Cross-market gap",
+            concept_meaning="Relative economics of synthetic versus domestic funding.",
+            why_it_matters="Primary decision metric for route preference.",
+            formula=r"\Delta r=r_{syn}-r_{dom}",
+            methodology_rationale="Subtract direct domestic cost from synthetic all-in cost.",
+            inputs_used="Synthetic and domestic all-in annualized rates.",
+            substituted_values=f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$",
+            derivation_steps=("Compute synthetic rate.", "Compute domestic rate.", "Take difference and convert to bps.",),
+            assumptions=("Both rates are tenor-aligned and annualized comparably.",),
+            interpretation="Positive gap means synthetic is less economical.",
+            common_misunderstandings=("Reading absolute levels without comparing the spread.",),
+            result=f"{one['HUF delta'] * 10000:.2f} bps",
+        ),
     ])
+    render_calculation_windows(
+        [
+            CalculationWindow(
+                "Domestic all-in",
+                r"r_{dom}=r_{domcurve}+s_{extra}",
+                f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$",
+                ("Costs add positively.",),
+                result=f"{one['HUF direct']:.4%}",
+            ),
+            CalculationWindow(
+                "Synthetic all-in",
+                r"r_{syn}=r_{forcurve}+b+s_{extra}",
+                f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$",
+                ("Positive basis raises synthetic cost.",),
+                result=f"{one['HUF synthetic']:.4%}",
+            ),
+            CalculationWindow(
+                "Cross-market gap",
+                r"\Delta r=r_{syn}-r_{dom}",
+                f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$",
+                ("Positive gap: synthetic is worse.",),
+                result=f"{one['HUF delta'] * 10000:.2f} bps",
+            ),
+        ]
+    )
 
 
 if __name__ == "__main__":
-    render_page()
-else:
     render_page()
