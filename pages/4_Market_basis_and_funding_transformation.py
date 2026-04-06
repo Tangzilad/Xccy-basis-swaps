@@ -211,7 +211,7 @@ def render_page() -> None:
                 formula=r"r_{dir,HUF}=r_{HUF\ curve}+s_{extra}",
                 methodology_rationale="Add execution spread to the HUF curve rate.",
                 inputs_used="HUF curve rate and extra spread.",
-                substituted_values=f"$r_{{HUF\ curve}}={(one_views['direct_domestic'] - one_views['extra_spread']):.4%}, s_{{extra}}={one_views['extra_spread']:.4%}$",
+                substituted_values=f"$r_{{HUF\\ curve}}={(one_views['direct_domestic'] - one_views['extra_spread']):.4%}, s_{{extra}}={one_views['extra_spread']:.4%}$",
                 derivation_steps=("Read HUF curve rate.", "Add issuer extra spread.",),
                 assumptions=("Inputs are tenor-aligned annualized rates.",),
                 interpretation="Lower direct HUF all-in supports local issuance.",
@@ -225,7 +225,7 @@ def render_page() -> None:
                 formula=r"r_{syn,HUF}=r_{USD\ curve}+b+s_{extra}",
                 methodology_rationale="Translate USD funding into HUF all-in terms using basis.",
                 inputs_used="USD curve rate, basis, and extra spread.",
-                substituted_values=f"$r_{{USD\ curve}}={(one_views['direct_foreign'] - one_views['extra_spread']):.4%}, b={one_views['basis']:.4%}, s_{{extra}}={one_views['extra_spread']:.4%}$",
+                substituted_values=f"$r_{{USD\\ curve}}={(one_views['direct_foreign'] - one_views['extra_spread']):.4%}, b={one_views['basis']:.4%}, s_{{extra}}={one_views['extra_spread']:.4%}$",
                 derivation_steps=("Start from USD curve.", "Add basis transfer.", "Add extra spread.",),
                 assumptions=("Basis is executed at quoted tenor level.",),
                 interpretation="Compare with direct HUF to determine cheaper issuance route.",
@@ -264,7 +264,7 @@ def render_page() -> None:
                 methodology_rationale="Compare direct USD spread to synthetic USD spread created from HUF issuance.",
                 inputs_used="USD spread 200 bp, HUF spread 100 bp, CF 1.091, basis 39.5 bp.",
                 substituted_values=(
-                    "$200 \overset{?}{>} 100\times1.091 + 39.5 = 148.6$; "
+                    "$200 \\overset{?}{>} 100\\times1.091 + 39.5 = 148.6$; "
                     "$HUF_{syn}=(200-39.5)/1.091=147.1$"
                 ),
                 derivation_steps=(

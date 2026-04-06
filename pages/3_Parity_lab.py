@@ -332,7 +332,7 @@ def render_page() -> None:
             formula=r"\Delta F = F_{obs} - F_{CIP}",
             methodology="Subtract theoretical forward from observed forward.",
             inputs="Spot (HUF/USD), observed forward (HUF/USD), domestic rate (USD), foreign rate (HUF), tenor.",
-            substituted_values=f"$\Delta F={observed_forward:.4f}-{breakdown['cip_implied_forward']:.4f}$",
+            substituted_values=f"$\\Delta F={observed_forward:.4f}-{breakdown['cip_implied_forward']:.4f}$",
             derivation_steps=("Compute CIP forward from spot and rates.", "Take observed minus CIP level.",),
             assumptions=("Inputs are tenor-matched under HUF/USD convention.",),
             interpretation="Positive values indicate observed forward richness vs CIP.",
