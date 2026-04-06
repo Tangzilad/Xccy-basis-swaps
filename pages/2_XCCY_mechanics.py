@@ -77,8 +77,58 @@ def render_page() -> None:
     )
     st.dataframe(timeline, use_container_width=True)
 
+    st.markdown("### Structure of a HUF/USD basis swap")
     st.markdown(
-        "Mechanics are shown from the **USD-receiver / HUF-payer** perspective. "
+        "- **Initial principal exchange at spot (t=0):** exchange USD principal for HUF principal at the "
+        f"spot rate $S_0={spot:.4f}$ HUF per USD.\n"
+        "- **Periodic floating coupons:** the USD leg pays/receives USD floating, while the HUF leg pays/receives "
+        "HUF floating **plus the HUF/USD basis spread** $b$.\n"
+        "- **Final principal re-exchange (maturity):** return the same notionals in opposite direction, "
+        "locking principal FX at contractual terms."
+    )
+    st.markdown(
+        "In HUF/USD markets, the basis spread is interpreted as compensation for **USD funding scarcity** and "
+        "**balance-sheet demand** from intermediaries warehousing HUF/USD risk."
+    )
+
+    st.markdown("#### HUF/USD swap timeline map (from current scenario)")
+    timeline_map = [
+        {
+            "Step": "t=0",
+            "HUF/USD leg event": "Initial principal exchange at spot",
+            "Linked timeline date": timeline[0]["date"],
+            "USD cashflow (USD receiver view)": timeline[0]["usd_cashflow"],
+        },
+        {
+            "Step": "t=period coupon",
+            "HUF/USD leg event": "USD floating coupon vs HUF floating + basis coupon",
+            "Linked timeline date": timeline[1]["date"] if len(timeline) > 1 else timeline[0]["date"],
+            "USD cashflow (USD receiver view)": timeline[1]["usd_cashflow"] if len(timeline) > 1 else 0.0,
+        },
+        {
+            "Step": "t=maturity",
+            "HUF/USD leg event": "Final principal re-exchange",
+            "Linked timeline date": timeline[-1]["date"],
+            "USD cashflow (USD receiver view)": timeline[-1]["usd_cashflow"],
+        },
+    ]
+    st.dataframe(timeline_map, use_container_width=True)
+
+    with st.expander("Decompose basis swap into a strip of FX forwards"):
+        st.markdown(
+            "**Step 1 — Anchor at spot:** start from the same HUF/USD principal exchange at $S_0$.\n\n"
+            "**Step 2 — Slice by coupon date:** each future HUF coupon + basis amount can be viewed as a dated "
+            "HUF cashflow converted into USD by a matching HUF/USD forward for that date.\n\n"
+            "**Step 3 — Match the USD leg:** summing those dated forward-converted amounts gives the synthetic "
+            "USD funding profile that is compared with direct USD floating.\n\n"
+            "**Step 4 — Link to formula:** in the one-period teaching setup,\n"
+            r"\[r_{USD,\ synthetic}=\frac{\frac{1+(r_{HUF}+b)T}{F/S}-1}{T}\]"
+            "\nHere, $b$ enters the HUF coupon term before conversion via $F/S$, which is why wider HUF/USD "
+            "basis mechanically raises synthetic USD cost."
+        )
+
+    st.markdown(
+        "All mechanics above are shown from the **USD-receiver / HUF-payer in a HUF/USD basis swap** perspective. "
         "Positive cashflows are received by the USD leg receiver."
     )
 

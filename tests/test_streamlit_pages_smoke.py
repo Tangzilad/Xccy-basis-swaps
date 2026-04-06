@@ -243,3 +243,17 @@ def test_calculation_panel_sections_present(monkeypatch):
     assert "#### Assumptions" in body
     assert "#### Common misunderstandings" in body
     assert "#### Result" in body
+
+
+def test_xccy_mechanics_contains_basis_swap_decomposition_heading(monkeypatch):
+    stub = _build_streamlit_stub()
+    shell_stub = _build_ui_shell_stub()
+    helpers_stub = _build_shared_page_helpers_stub()
+    monkeypatch.setitem(sys.modules, "streamlit", stub)
+    monkeypatch.setitem(sys.modules, "ui_shell", shell_stub)
+    monkeypatch.setitem(sys.modules, "shared_page_helpers", helpers_stub)
+    sys.modules.pop("pages.2_XCCY_mechanics", None)
+
+    importlib.import_module("pages.2_XCCY_mechanics")
+
+    assert "Decompose basis swap into a strip of FX forwards" in stub.expander_labels
