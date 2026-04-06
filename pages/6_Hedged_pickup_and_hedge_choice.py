@@ -13,10 +13,18 @@ from src.analytics.hedging import (
 )
 from src.state.session_access import get_canonical_market_context
 
+REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
+    "conversion_factor",
+    "relative_forward_difference",
+    "theoretical_forward",
+    "hedged_pickup",
+    "implied_usd_rate",
+)
+
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="6. Hedged pickup and hedge choice", page_icon="📘", layout="wide")
@@ -121,7 +129,7 @@ def render_page() -> None:
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="6. Hedged pickup and hedge choice", page_icon="📘", layout="wide")
@@ -163,23 +171,22 @@ def render_page() -> None:
 
     base = payload["base"]
     round_trip = payload["round_trip"]
-    render_calculation_windows(
-        [
-            CalculationWindow(
+    calc_windows = {
+            "conversion_factor": CalculationWindow(
                 "Simple conversion factor",
                 r"CF_{simple}=F/S",
                 f"$F={payload['fwd_1y']:.4f}, S={payload['spot']:.4f}$",
                 ("Simple tenor-matched ratio for quote translation.",),
                 result=f"{payload['simple_cf']:.6f}",
             ),
-            CalculationWindow(
+            "relative_forward_difference": CalculationWindow(
                 "Curve-aware conversion factor",
                 r"CF_{curve}=\sum_i w_i(F_i/S)",
                 f"$\\sum_i w_i=1, S={payload['spot']:.4f}$",
                 ("Weights use discount-factor annuity terms across tenor buckets.",),
                 result=f"{payload['curve_cf']:.6f}",
             ),
-            CalculationWindow(
+            "theoretical_forward": CalculationWindow(
                 "Spread translation round-trip",
                 r"\text{HUF bp}\to\text{USD bp}\to\text{HUF bp}",
                 (
@@ -193,7 +200,7 @@ def render_page() -> None:
                     f" | pass={round_trip['round_trip_within_tolerance']}"
                 ),
             ),
-            CalculationWindow(
+            "hedged_pickup": CalculationWindow(
                 "Pickup decomposition",
                 r"\text{Net}=\text{Gross}-\text{Hedge}-\text{Basis}-\text{Extra}",
                 (
@@ -203,7 +210,7 @@ def render_page() -> None:
                 ("Gross pickup is reduced by implementable hedge and friction terms.",),
                 result=f"{base['net_hedged_pickup_bp']:.2f} bps",
             ),
-            CalculationWindow(
+            "implied_usd_rate": CalculationWindow(
                 "Matched vs rolling hedge",
                 r"\text{RA roll}=C_{roll}+\lambda\cdot \sigma_{roll}",
                 (
@@ -218,7 +225,11 @@ def render_page() -> None:
                     f" | preferred={base['preferred_hedge']}"
                 ),
             ),
-        ]
+    }
+    render_required_calculation_windows(
+        calc_windows,
+        required_keys=REQUIRED_CALCULATION_WINDOWS,
+        page_name="6. Hedged pickup and hedge choice",
     )
 
 

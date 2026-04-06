@@ -8,6 +8,15 @@ from src.analytics.parity import fair_value_comparison
 from src.analytics.xccy_swap import synthetic_funding_cost_outputs
 from src.state.session_access import get_canonical_market_context
 
+REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
+    "raw_basis_wedge",
+    "synthetic_funding_cost",
+    "friction_adjusted_arbitrage_band",
+    "conversion_factor",
+    "hedged_pickup",
+    "stressed_vs_base_deltas",
+)
+
 
 def _compute_metrics(snapshot: dict) -> dict:
     usd_df = snapshot["usd_curve_df"].set_index("tenor")
@@ -98,7 +107,7 @@ def _compute_metrics(snapshot: dict) -> dict:
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="7. HUF/USD strategy and stress lab", page_icon="📘", layout="wide")
@@ -151,50 +160,55 @@ def render_page() -> None:
     st.write("Stress scenarios roll into CIP wedge, funding transformation, frictions, and hedge economics.")
     learning_hint("Check whether net pickup survives widened friction bands and whether hedge preference flips.")
 
-    render_calculation_windows([
-        CalculationWindow(
+    calc_windows = {
+        "raw_basis_wedge": CalculationWindow(
             "Stressed CIP wedge",
             r"(r_{HUF}^{impl}-r_{HUF})\times10{,}000",
             f"$S={sm['spot']:.4f}, F_{{mkt,1Y}}={sm['forward']:.4f}$",
             ("Uses observed market forward tenor instead of a constructed forward.",),
             result=f"{sm['parity']['raw_basis_wedge_bp']:.2f} bps",
         ),
-        CalculationWindow(
+        "synthetic_funding_cost": CalculationWindow(
             "Stressed funding transformation",
             r"\Delta r = r_{syn,dom} - r_{dir,dom}",
             f"${sm['funding']['synthetic_all_in']:.6f}-{sm['funding']['domestic_all_in']:.6f}$",
             ("Positive means synthetic HUF funding is less economical than direct.",),
             result=f"{sm['funding']['cross_market_gap'] * 10_000:.2f} bps",
         ),
-        CalculationWindow(
+        "friction_adjusted_arbitrage_band": CalculationWindow(
             "Stressed friction-adjusted edge",
             r"\text{CIP wedge}-\text{Friction}",
             f"${sm['frictions']['raw_edge_bp']:.2f}-{sm['frictions']['total_friction_bp']:.2f}$",
             ("Actionable only if absolute wedge exceeds friction band.",),
             result=f"{sm['frictions']['net_edge_bp']:.2f} bps",
         ),
-        CalculationWindow(
+        "conversion_factor": CalculationWindow(
             "Stressed conversion factor",
             r"CF_{curve}=\sum_i w_i(F_i/S)",
             f"$CF_{{simple}}={sm['conversion_factor_simple']:.6f},\\;CF_{{curve}}={sm['conversion_factor_curve']:.6f}$",
             ("Curve-aware CF uses observed forward ladder and tenor-weighting.",),
             result=f"{sm['conversion_factor_curve']:.6f}",
         ),
-        CalculationWindow(
+        "hedged_pickup": CalculationWindow(
             "Stressed hedged pickup",
             r"\text{Net}=\text{Gross}-\text{Hedge}-\text{Basis}-\text{Extra}",
             f"${sm['pickup']['gross_pickup_bp']:.2f}-{sm['pickup']['hedge_cost_bp']:.2f}-{sm['pickup']['basis_drag_bp']:.2f}-{sm['pickup']['extra_friction_bp']:.2f}$",
             ("Positive pickup remains attractive after implementation costs.",),
             result=f"{sm['pickup']['net_hedged_pickup_bp']:.2f} bps",
         ),
-        CalculationWindow(
+        "stressed_vs_base_deltas": CalculationWindow(
             "Stressed preferred hedge choice",
             r"\text{choose rolling if } C_m-(C_r+\lambda\sigma)>0",
             f"$C_m={sm['hedge_choice']['matched_cost_bp']:.2f}, C_r={sm['hedge_choice']['expected_rolling_cost_bp']:.2f}, \\sigma={sm['hedge_choice']['roll_risk_proxy_bp']:.2f}$",
             ("Compares matched cost against risk-adjusted rolling alternative.",),
             result=f"{str(sm['hedge_choice']['preferred_hedge']).title()}",
         ),
-    ])
+    }
+    render_required_calculation_windows(
+        calc_windows,
+        required_keys=REQUIRED_CALCULATION_WINDOWS,
+        page_name="7. HUF/USD strategy and stress lab",
+    )
 
     st.subheader("Scenario conclusion prompts")
     st.markdown("- What changed?\n- Why it changed?\n- Would I still do the trade?")

@@ -12,6 +12,14 @@ WORKED_EXAMPLE = {
     "huf_rate": 6.85,
     "tenor": "1Y",
 }
+REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
+    "theoretical_forward",
+    "implied_huf_rate",
+    "implied_usd_rate",
+    "forward_difference",
+    "relative_forward_difference",
+    "raw_basis_wedge",
+)
 
 
 def _as_decimal(v: float) -> float:
@@ -206,39 +214,26 @@ def render_page() -> None:
             ),
             result=f"{breakdown['raw_basis_wedge_bp']:.2f} bp",
         ),
-        "synthetic_funding_cost": CalculationWindow(
-            "Synthetic funding cost",
-            r"\text{Synthetic USD cost} \approx r_{USD}^{impl}",
-            "Using implied USD rate from spot-forward parity decomposition.",
-            result=f"{breakdown['implied_usd_rate']:.4%}",
+        "forward_difference": CalculationWindow(
+            "Forward difference",
+            r"\Delta F=F_{obs}-F_{CIP}",
+            f"${observed_forward:.4f}-{breakdown['cip_implied_forward']:.4f}$",
+            result=f"{breakdown['forward_difference']:.4f}",
         ),
-        "friction_adjusted_arbitrage_band": CalculationWindow(
-            "Friction-adjusted arbitrage band",
-            r"\text{Net edge}=\text{Raw wedge}-\text{Frictions}",
-            "Friction inputs are not modelled on this page; interpret raw wedge before costs.",
-            result="N/A on this page",
-        ),
-        "hedged_pickup": CalculationWindow(
-            "Hedged pickup",
-            r"\text{Pickup}=\text{Carry}-\text{Hedge costs}",
-            "Carry and hedge implementation are shown in later pages.",
-            result="N/A on this page",
-        ),
-        "conversion_factor": CalculationWindow(
-            "Conversion factor",
-            r"CF=F/S",
-            f"$CF={observed_forward:.4f}/{spot:.4f}$",
-            result=f"{observed_forward/spot:.6f}",
-        ),
-        "stressed_vs_base_deltas": CalculationWindow(
-            "Stressed vs base deltas",
-            r"\Delta x = x_{stress}-x_{base}",
-            "This page displays current-state decomposition only.",
-            result="N/A on this page",
+        "relative_forward_difference": CalculationWindow(
+            "Relative forward difference",
+            r"\text{RelDiff}_{bp}=\left(\frac{F_{obs}}{F_{CIP}}-1\right)\times10{,}000",
+            f"$({observed_forward:.6f}/{breakdown['cip_implied_forward']:.6f}-1)\\times10,000$",
+            result=f"{breakdown['forward_relative_bp']:.2f} bp",
         ),
     }
     st.subheader("Calculation windows")
-    render_required_calculation_windows(calc_windows, default_expanded=False)
+    render_required_calculation_windows(
+        calc_windows,
+        required_keys=REQUIRED_CALCULATION_WINDOWS,
+        page_name="3. Parity lab",
+        default_expanded=False,
+    )
 
 
 if __name__ == "__main__":

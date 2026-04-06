@@ -21,33 +21,19 @@ class CalculationWindow:
     expanded: bool = False
 
 
-DEFAULT_CALCULATION_TITLES: tuple[str, ...] = (
-    "Theoretical forward",
-    "Implied HUF rate",
-    "Implied USD rate",
-    "Raw basis wedge",
-    "Synthetic funding cost",
-    "Friction-adjusted arbitrage band",
-    "Hedged pickup",
-    "Conversion factor",
-    "Stressed vs base deltas",
-)
-
-
-_CALCULATION_KEYS: tuple[str, ...] = (
-    "theoretical_forward",
-    "implied_huf_rate",
-    "implied_usd_rate",
-    "raw_basis_wedge",
-    "synthetic_funding_cost",
-    "friction_adjusted_arbitrage_band",
-    "hedged_pickup",
-    "conversion_factor",
-    "stressed_vs_base_deltas",
-)
-
-
-CALCULATION_KEY_TO_TITLE = dict(zip(_CALCULATION_KEYS, DEFAULT_CALCULATION_TITLES))
+CALCULATION_KEY_TO_TITLE: dict[str, str] = {
+    "theoretical_forward": "Theoretical forward",
+    "implied_huf_rate": "Implied HUF rate",
+    "implied_usd_rate": "Implied USD rate",
+    "forward_difference": "Forward difference",
+    "relative_forward_difference": "Relative forward difference",
+    "raw_basis_wedge": "Raw basis wedge",
+    "synthetic_funding_cost": "Synthetic funding cost",
+    "friction_adjusted_arbitrage_band": "Friction-adjusted arbitrage band",
+    "hedged_pickup": "Hedged pickup",
+    "conversion_factor": "Conversion factor",
+    "stressed_vs_base_deltas": "Stressed vs base deltas",
+}
 
 
 def render_calculation_window(window: CalculationWindow) -> None:
@@ -83,12 +69,59 @@ def render_calculation_windows(windows: Iterable[CalculationWindow]) -> None:
         render_calculation_window(window)
 
 
+def validate_required_calculation_windows(
+    calculations: dict[str, CalculationWindow],
+    *,
+    required_keys: Sequence[str],
+    page_name: str | None = None,
+    default_expanded: bool = False,
+) -> list[CalculationWindow]:
+    """Validate and normalize required windows for an active page."""
+    missing_keys = [key for key in required_keys if key not in calculations]
+    if missing_keys:
+        expected_titles = [
+            f"{key} ({CALCULATION_KEY_TO_TITLE.get(key, key)})"
+            for key in missing_keys
+        ]
+        page_descriptor = f" for page '{page_name}'" if page_name else ""
+        raise KeyError(
+            "Missing required calculation window(s)"
+            f"{page_descriptor}: {', '.join(expected_titles)}. "
+            f"Provided keys: {sorted(calculations)}."
+        )
+
+    windows: list[CalculationWindow] = []
+    for key in required_keys:
+        window = calculations[key]
+        if not isinstance(window, CalculationWindow):
+            raise TypeError(
+                f"Expected CalculationWindow for key '{key}', got {type(window)!r}."
+            )
+        if window.expanded != default_expanded:
+            windows.append(window)
+            continue
+        windows.append(
+            CalculationWindow(
+                title=window.title,
+                formula=window.formula,
+                substituted_values=window.substituted_values,
+                sign_convention_notes=tuple(window.sign_convention_notes),
+                assumptions=tuple(window.assumptions),
+                result=window.result,
+                expanded=default_expanded,
+            )
+        )
+    return windows
+
+
 def render_required_calculation_windows(
     calculations: dict[str, CalculationWindow],
     *,
+    required_keys: Sequence[str],
+    page_name: str | None = None,
     default_expanded: bool = False,
 ) -> None:
-    """Render all required windows in a consistent order.
+    """Render required windows in a consistent order for the active page.
 
     Parameters
     ----------
@@ -97,31 +130,10 @@ def render_required_calculation_windows(
     default_expanded:
         Fallback expanded value when a provided window does not explicitly set one.
     """
-    windows: list[CalculationWindow] = []
-    for key in _CALCULATION_KEYS:
-        if key not in calculations:
-            raise KeyError(
-                f"Missing required calculation window: '{key}'. "
-                "Provide all required calculation entries."
-            )
-        window = calculations[key]
-        if not isinstance(window, CalculationWindow):
-            raise TypeError(
-                f"Expected CalculationWindow for key '{key}', got {type(window)!r}."
-            )
-        if window.expanded != default_expanded:
-            windows.append(window)
-        else:
-            windows.append(
-                CalculationWindow(
-                    title=window.title,
-                    formula=window.formula,
-                    substituted_values=window.substituted_values,
-                    sign_convention_notes=tuple(window.sign_convention_notes),
-                    assumptions=tuple(window.assumptions),
-                    result=window.result,
-                    expanded=default_expanded,
-                )
-            )
-
+    windows = validate_required_calculation_windows(
+        calculations,
+        required_keys=required_keys,
+        page_name=page_name,
+        default_expanded=default_expanded,
+    )
     render_calculation_windows(windows)

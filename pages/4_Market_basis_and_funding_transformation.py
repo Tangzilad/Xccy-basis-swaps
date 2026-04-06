@@ -8,10 +8,16 @@ from src.analytics.funding import (
     issuance_choice,
 )
 
+REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
+    "theoretical_forward",
+    "synthetic_funding_cost",
+    "forward_difference",
+)
+
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="4. Market basis and funding transformation", page_icon="📘", layout="wide")
@@ -132,11 +138,34 @@ def render_page() -> None:
     )
     st.write("Funding transformation compares domestic route versus foreign-plus-basis route.")
     learning_hint("Positive gap means synthetic route is less economical.")
-    render_calculation_windows([
-        CalculationWindow("Domestic all-in", r"r_{dom}=r_{domcurve}+s_{extra}", f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$", ("Costs add positively.",), result=f"{one['HUF direct']:.4%}"),
-        CalculationWindow("Synthetic all-in", r"r_{syn}=r_{forcurve}+b+s_{extra}", f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$", ("Positive basis raises synthetic cost.",), result=f"{one['HUF synthetic']:.4%}"),
-        CalculationWindow("Cross-market gap", r"\Delta r=r_{syn}-r_{dom}", f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$", ("Positive gap: synthetic is worse.",), result=f"{one['HUF delta'] * 10000:.2f} bps"),
-    ])
+    calc_windows = {
+        "theoretical_forward": CalculationWindow(
+            "Domestic all-in",
+            r"r_{dom}=r_{domcurve}+s_{extra}",
+            f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$",
+            ("Costs add positively.",),
+            result=f"{one['HUF direct']:.4%}",
+        ),
+        "synthetic_funding_cost": CalculationWindow(
+            "Synthetic all-in",
+            r"r_{syn}=r_{forcurve}+b+s_{extra}",
+            f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$",
+            ("Positive basis raises synthetic cost.",),
+            result=f"{one['HUF synthetic']:.4%}",
+        ),
+        "forward_difference": CalculationWindow(
+            "Cross-market gap",
+            r"\Delta r=r_{syn}-r_{dom}",
+            f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$",
+            ("Positive gap: synthetic is worse.",),
+            result=f"{one['HUF delta'] * 10000:.2f} bps",
+        ),
+    }
+    render_required_calculation_windows(
+        calc_windows,
+        required_keys=REQUIRED_CALCULATION_WINDOWS,
+        page_name="4. Market basis and funding transformation",
+    )
 
 
 if __name__ == "__main__":

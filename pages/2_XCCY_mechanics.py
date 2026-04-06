@@ -3,10 +3,16 @@ from __future__ import annotations
 from src.analytics.xccy_swap import SwapPeriod, cashflow_timeline, synthetic_funding_cost_outputs
 from src.state.session_access import get_canonical_market_context
 
+REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
+    "theoretical_forward",
+    "implied_usd_rate",
+    "synthetic_funding_cost",
+)
+
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="2. XCCY mechanics", page_icon="📘", layout="wide")
@@ -34,11 +40,34 @@ def render_page() -> None:
     st.dataframe(timeline, use_container_width=True)
     st.write("Mechanics are shown from the USD-receiver / HUF-payer perspective.")
     learning_hint("Positive cashflows are received by the USD leg receiver.")
-    render_calculation_windows([
-        CalculationWindow("Synthetic USD (no basis)", r"r=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}", f"$S={spot:.4f}, F={forward:.4f}, r_{{HUF}}={huf_rate:.4%}$", ("Positive rate = higher funding cost.",), result=f"{out['synthetic_usd_rate_no_basis']:.4%}"),
-        CalculationWindow("Synthetic USD (with basis)", r"r=\frac{\frac{1+(r_{HUF}+b)T}{F/S}-1}{T}", f"$b={basis:.4%}$", ("Positive basis increases HUF coupon.",), result=f"{out['synthetic_usd_rate_with_basis']:.4%}"),
-        CalculationWindow("Basis drag", r"(r_{with}-r_{no})\times 10{,}000", f"$({out['synthetic_usd_rate_with_basis']:.6f}-{out['synthetic_usd_rate_no_basis']:.6f})\times10,000$", ("Positive drag means worse synthetic funding.",), result=f"{out['basis_drag_bp']:.2f} bp"),
-    ])
+    calc_windows = {
+        "theoretical_forward": CalculationWindow(
+            "Synthetic USD (no basis)",
+            r"r=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}",
+            f"$S={spot:.4f}, F={forward:.4f}, r_{{HUF}}={huf_rate:.4%}$",
+            ("Positive rate = higher funding cost.",),
+            result=f"{out['synthetic_usd_rate_no_basis']:.4%}",
+        ),
+        "implied_usd_rate": CalculationWindow(
+            "Synthetic USD (with basis)",
+            r"r=\frac{\frac{1+(r_{HUF}+b)T}{F/S}-1}{T}",
+            f"$b={basis:.4%}$",
+            ("Positive basis increases HUF coupon.",),
+            result=f"{out['synthetic_usd_rate_with_basis']:.4%}",
+        ),
+        "synthetic_funding_cost": CalculationWindow(
+            "Basis drag",
+            r"(r_{with}-r_{no})\times 10{,}000",
+            f"$({out['synthetic_usd_rate_with_basis']:.6f}-{out['synthetic_usd_rate_no_basis']:.6f})\times10,000$",
+            ("Positive drag means worse synthetic funding.",),
+            result=f"{out['basis_drag_bp']:.2f} bp",
+        ),
+    }
+    render_required_calculation_windows(
+        calc_windows,
+        required_keys=REQUIRED_CALCULATION_WINDOWS,
+        page_name="2. XCCY mechanics",
+    )
 
 
 if __name__ == "__main__":
