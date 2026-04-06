@@ -42,3 +42,9 @@ def render_page() -> None:
         CalculationWindow("Implied HUF rate", r"r_{HUF}^{impl}=\frac{(F/S)(1+r_{USD}T)-1}{T}", f"$F={one['observed_forward']:.4f}$", ("Positive gap = richer implied HUF.",), result=f"{ih:.4%}"),
         CalculationWindow("Implied USD rate", r"r_{USD}^{impl}=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}", f"$F={one['observed_forward']:.4f}$", ("Higher implied USD worsens synthetic borrowing.",), result=f"{iu:.4%}"),
     ])
+
+
+if __name__ == "__main__":
+    render_page()
+else:
+    render_page()
