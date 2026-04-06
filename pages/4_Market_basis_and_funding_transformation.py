@@ -42,6 +42,12 @@ def _recommendation_state(delta_bp: float, friction_bp: float) -> tuple[str, str
         return "Synthetic route preferred", "🟩"
     return "Indifferent within friction band", "🟨"
 
+REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
+    "theoretical_forward",
+    "synthetic_funding_cost",
+    "forward_difference",
+)
+
 
 def render_page() -> None:
     import streamlit as st

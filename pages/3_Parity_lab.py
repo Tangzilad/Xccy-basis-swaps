@@ -11,6 +11,14 @@ WORKED_EXAMPLE = {
     "huf_rate": 6.85,
     "tenor": "1Y",
 }
+REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
+    "theoretical_forward",
+    "implied_huf_rate",
+    "implied_usd_rate",
+    "forward_difference",
+    "relative_forward_difference",
+    "raw_basis_wedge",
+)
 
 
 def _from_decimal(v: float) -> float:

@@ -14,6 +14,14 @@ from src.analytics.hedging import (
 from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
 
+REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
+    "conversion_factor",
+    "relative_forward_difference",
+    "theoretical_forward",
+    "hedged_pickup",
+    "implied_usd_rate",
+)
+
 
 def _get_market_state(session_state: dict) -> object:
     return session_state.get("market_state")

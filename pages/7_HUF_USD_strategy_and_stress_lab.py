@@ -9,6 +9,15 @@ from src.analytics.xccy_swap import synthetic_funding_cost_outputs
 from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
 
+REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
+    "raw_basis_wedge",
+    "synthetic_funding_cost",
+    "friction_adjusted_arbitrage_band",
+    "conversion_factor",
+    "hedged_pickup",
+    "stressed_vs_base_deltas",
+)
+
 
 def _compute_metrics(snapshot: dict) -> dict:
     usd_df = snapshot["usd_curve_df"].set_index("tenor")

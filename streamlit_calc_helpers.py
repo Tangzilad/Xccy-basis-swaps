@@ -113,33 +113,19 @@ def adapt_legacy_window(window: LegacyCalculationWindow) -> CalculationWindow:
     )
 
 
-DEFAULT_CALCULATION_TITLES: tuple[str, ...] = (
-    "Theoretical forward",
-    "Implied HUF rate",
-    "Implied USD rate",
-    "Raw basis wedge",
-    "Synthetic funding cost",
-    "Friction-adjusted arbitrage band",
-    "Hedged pickup",
-    "Conversion factor",
-    "Stressed vs base deltas",
-)
-
-
-_CALCULATION_KEYS: tuple[str, ...] = (
-    "theoretical_forward",
-    "implied_huf_rate",
-    "implied_usd_rate",
-    "raw_basis_wedge",
-    "synthetic_funding_cost",
-    "friction_adjusted_arbitrage_band",
-    "hedged_pickup",
-    "conversion_factor",
-    "stressed_vs_base_deltas",
-)
-
-
-CALCULATION_KEY_TO_TITLE = dict(zip(_CALCULATION_KEYS, DEFAULT_CALCULATION_TITLES))
+CALCULATION_KEY_TO_TITLE: dict[str, str] = {
+    "theoretical_forward": "Theoretical forward",
+    "implied_huf_rate": "Implied HUF rate",
+    "implied_usd_rate": "Implied USD rate",
+    "forward_difference": "Forward difference",
+    "relative_forward_difference": "Relative forward difference",
+    "raw_basis_wedge": "Raw basis wedge",
+    "synthetic_funding_cost": "Synthetic funding cost",
+    "friction_adjusted_arbitrage_band": "Friction-adjusted arbitrage band",
+    "hedged_pickup": "Hedged pickup",
+    "conversion_factor": "Conversion factor",
+    "stressed_vs_base_deltas": "Stressed vs base deltas",
+}
 
 
 def _normalize_window(window: CalculationWindow | LegacyCalculationWindow) -> CalculationWindow:
@@ -213,18 +199,13 @@ def render_calculation_windows(windows: Iterable[CalculationWindow | LegacyCalcu
 def render_required_calculation_windows(
     calculations: dict[str, CalculationWindow | LegacyCalculationWindow],
     *,
+    required_keys: Sequence[str],
+    page_name: str | None = None,
     default_expanded: bool = False,
     sign_convention: SignConventionContext | None = None,
 ) -> None:
     """Render all required windows in a consistent order.
 
-    Parameters
-    ----------
-    calculations:
-        Mapping keyed by the expected identifiers (e.g. ``theoretical_forward``).
-    default_expanded:
-        Fallback expanded value when a provided window does not explicitly set one.
-    """
     windows: list[CalculationWindow] = []
     for key in _CALCULATION_KEYS:
         if key not in calculations:
@@ -255,5 +236,8 @@ def render_required_calculation_windows(
                     expanded=default_expanded,
                 )
             )
+        )
+    return windows
+
 
     render_calculation_windows(windows, sign_convention=sign_convention)

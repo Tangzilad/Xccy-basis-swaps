@@ -181,7 +181,11 @@ def test_calculation_panel_sections_present(monkeypatch):
         "stressed_vs_base_deltas": _window("Stressed vs base deltas"),
     }
 
-    render_required_calculation_windows(windows)
+    render_required_calculation_windows(
+        windows,
+        required_keys=tuple(windows),
+        page_name="smoke",
+    )
 
     body = "\n".join(stub.markdown_calls)
     assert "#### Formula" in body

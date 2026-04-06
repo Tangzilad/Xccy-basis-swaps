@@ -4,6 +4,12 @@ from src.analytics.xccy_swap import SwapPeriod, cashflow_timeline, synthetic_fun
 from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
 
+REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
+    "theoretical_forward",
+    "implied_usd_rate",
+    "synthetic_funding_cost",
+)
+
 
 def render_page() -> None:
     import streamlit as st
