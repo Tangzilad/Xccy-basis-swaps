@@ -23,7 +23,12 @@ def _get_market_state(session_state: dict) -> object:
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
+    from streamlit_calc_helpers import (
+        CalculationWindow,
+        SignConventionContext,
+        render_required_calculation_windows,
+        render_shared_sign_convention,
+    )
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="3. Parity lab", page_icon="📘", layout="wide")
@@ -294,7 +299,14 @@ def render_page() -> None:
         ),
     }
     st.subheader("Calculation windows")
-    render_required_calculation_windows(calc_windows, default_expanded=False)
+    sign_context = SignConventionContext(
+        quote_convention="HUF per USD",
+        perspective="Parity decomposition from synthetic USD funding view via HUF market and observed forwards.",
+        positive_interpretation="Positive wedge/relative difference means observed forward is above no-basis CIP.",
+        negative_interpretation="Negative wedge/relative difference means observed forward is below no-basis CIP.",
+    )
+    render_shared_sign_convention(sign_context)
+    render_required_calculation_windows(calc_windows, default_expanded=False, sign_convention=sign_context)
 
 
 if __name__ == "__main__":

@@ -72,6 +72,20 @@ class LegacyCalculationWindow:
     assumptions: Sequence[str] = field(default_factory=tuple)
     result: str = ""
     expanded: bool = False
+    quote_convention: str = ""
+    perspective: str = ""
+    positive_interpretation: str = ""
+    negative_interpretation: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class SignConventionContext:
+    """Shared sign-convention details applied to a page's calculation windows."""
+
+    quote_convention: str
+    perspective: str
+    positive_interpretation: str
+    negative_interpretation: str
 
 
 def adapt_legacy_window(window: LegacyCalculationWindow) -> CalculationWindow:
@@ -193,13 +207,14 @@ def render_calculation_window(window: CalculationWindow | LegacyCalculationWindo
 def render_calculation_windows(windows: Iterable[CalculationWindow | LegacyCalculationWindow]) -> None:
     """Render a list of collapsible calculation windows."""
     for window in windows:
-        render_calculation_window(window)
+        render_calculation_window(_apply_sign_context(window, sign_convention))
 
 
 def render_required_calculation_windows(
     calculations: dict[str, CalculationWindow | LegacyCalculationWindow],
     *,
     default_expanded: bool = False,
+    sign_convention: SignConventionContext | None = None,
 ) -> None:
     """Render all required windows in a consistent order.
 
@@ -241,4 +256,4 @@ def render_required_calculation_windows(
                 )
             )
 
-    render_calculation_windows(windows)
+    render_calculation_windows(windows, sign_convention=sign_convention)

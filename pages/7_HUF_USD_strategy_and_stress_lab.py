@@ -99,7 +99,12 @@ def _compute_metrics(snapshot: dict) -> dict:
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import (
+        CalculationWindow,
+        SignConventionContext,
+        render_calculation_windows,
+        render_shared_sign_convention,
+    )
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="7. HUF/USD strategy and stress lab", page_icon="📘", layout="wide")
@@ -167,6 +172,13 @@ def render_page() -> None:
     st.dataframe(rows, use_container_width=True)
     st.write("Stress scenarios roll into CIP wedge, funding transformation, frictions, and hedge economics.")
     learning_hint("Check whether net pickup survives widened friction bands and whether hedge preference flips.")
+    sign_context = SignConventionContext(
+        quote_convention="HUF per USD",
+        perspective="Strategy desk compares base vs stressed state across parity, funding, frictions, and hedging.",
+        positive_interpretation="Positive delta/edge/pickup supports the shown trade direction in the current scenario.",
+        negative_interpretation="Negative delta/edge/pickup favors reducing risk or taking the opposite direction.",
+    )
+    render_shared_sign_convention(sign_context)
 
     render_calculation_windows([
         CalculationWindow(
@@ -253,7 +265,7 @@ def render_page() -> None:
             common_misunderstandings=("Selecting lowest expected cost without risk adjustment.",),
             result=f"{str(sm['hedge_choice']['preferred_hedge']).title()}",
         ),
-    ])
+    ], sign_convention=sign_context)
 
     st.subheader("Scenario conclusion prompts")
     st.markdown("- What changed?\n- Why it changed?\n- Would I still do the trade?")

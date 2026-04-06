@@ -7,7 +7,12 @@ from src.state.session_access import get_canonical_market_context
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import (
+        CalculationWindow,
+        SignConventionContext,
+        render_calculation_windows,
+        render_shared_sign_convention,
+    )
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="2. XCCY mechanics", page_icon="📘", layout="wide")
@@ -55,6 +60,13 @@ def render_page() -> None:
     st.dataframe(timeline, use_container_width=True)
     st.write("Mechanics are shown from the USD-receiver / HUF-payer perspective.")
     learning_hint("Positive cashflows are received by the USD leg receiver.")
+    sign_context = SignConventionContext(
+        quote_convention="HUF per USD",
+        perspective="USD-receiver / HUF-payer swap leg direction.",
+        positive_interpretation="Positive metric implies higher USD-side synthetic cost or inflow for the stated leg.",
+        negative_interpretation="Negative metric implies lower USD-side synthetic cost or outflow for the stated leg.",
+    )
+    render_shared_sign_convention(sign_context)
     render_calculation_windows([
         CalculationWindow(
             title="Synthetic USD (no basis)",

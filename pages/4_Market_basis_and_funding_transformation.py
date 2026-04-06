@@ -45,7 +45,12 @@ def _recommendation_state(delta_bp: float, friction_bp: float) -> tuple[str, str
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import (
+        CalculationWindow,
+        SignConventionContext,
+        render_calculation_windows,
+        render_shared_sign_convention,
+    )
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="4. Market basis and funding transformation", page_icon="📘", layout="wide")
@@ -183,6 +188,13 @@ def render_page() -> None:
     )
     st.write("Funding transformation compares domestic route versus foreign-plus-basis route.")
     learning_hint("Positive gap means synthetic route is less economical.")
+    sign_context = SignConventionContext(
+        quote_convention="HUF per USD",
+        perspective="Funding decision lens (issuer/investor/treasury) for HUF and USD issuance directions.",
+        positive_interpretation="Positive delta/gap means synthetic funding is more expensive than direct funding.",
+        negative_interpretation="Negative delta/gap means synthetic funding is cheaper than direct funding.",
+    )
+    render_shared_sign_convention(sign_context)
     render_calculation_windows([
         CalculationWindow(
             title="Domestic all-in",
