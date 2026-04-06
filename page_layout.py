@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
-from src.state.market_state import snapshot_for_narrative
+from src.state.session_access import get_canonical_market_context
 from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
 
@@ -33,7 +33,7 @@ def render_lesson(
     render_global_shell(page_context=PAGE_CONTEXT_BY_STEP.get(step_index, "overview"))
     st.session_state.suggested_page = LEARNING_PATH[step_index]
 
-    snapshot = snapshot_for_narrative(st.session_state["market_state"])
+    snapshot = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
 
     st.title(title)
     st.markdown("### Summary")
@@ -46,10 +46,12 @@ def render_lesson(
 
     st.markdown("### Chart / table")
     tenors = np.array([1, 3, 6, 12, 24, 60])
-    base = float(snapshot["base_rate"])
-    quote = float(snapshot["quote_rate"])
-    basis_bps = float(snapshot["cross_currency_basis_bps"])
-    vol_mul = VOL_MULTIPLIER[str(snapshot["vol_regime"])]
+    base = float(snapshot["usd_rate"] * 100.0)
+    quote = float(snapshot["huf_rate"] * 100.0)
+    basis_bps = float(snapshot["basis_bps"])
+    regime_name = str(st.session_state["market_state"]["regime"].get("name", "baseline"))
+    vol_key = {"calm": "Calm", "baseline": "Normal", "stress": "Stressed"}.get(regime_name, "Normal")
+    vol_mul = VOL_MULTIPLIER[vol_key]
 
     curve = basis_bps * np.exp(-tenors / 36) * vol_mul
     carry = (quote - base) * tenors / 12

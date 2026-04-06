@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from src.analytics.conversion_factor import conversion_factor_from_fx, translate_spread_bp
+from src.analytics.hedging import hedged_pickup_bp, matched_vs_rolling_hedge_economics_bp, roll_cost_and_risk_proxy_bp
+from src.state.session_access import get_canonical_market_context
 from src.analytics.conversion_factor import (
     conversion_factor_curve_aware,
     conversion_factor_simple,
@@ -28,6 +31,30 @@ def render_page() -> None:
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="6. Hedged pickup and hedge choice", page_icon="📘", layout="wide")
+    render_global_shell()
+    st.session_state.suggested_page = LEARNING_PATH[5]
+
+    summary = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
+    spot, usd, huf, basis = float(summary["spot_fx"]), float(summary["usd_rate"]), float(summary["huf_rate"]), float(summary["basis_bps"])
+
+    fwd = spot * (1 + huf) / (1 + usd)
+    cf = conversion_factor_from_fx(spot, fwd)
+    gross = translate_spread_bp((huf - usd) * 10_000, cf)
+
+    rows = []
+    for hc in [20.0, 35.0, 50.0]:
+        rp = roll_cost_and_risk_proxy_bp(hc, hc + 5.0, 18.0, 1.0)
+        ch = matched_vs_rolling_hedge_economics_bp(hc + 12.0, hc, rp["roll_risk_proxy_bp"], 0.6)
+        rows.append({"hedge_cost": hc, "pickup": hedged_pickup_bp(gross, hc, abs(basis), 8.0), **rp, **ch})
+    base = next(r for r in rows if r["hedge_cost"] == 35.0)
+
+    st.title("6. Hedged pickup and hedge choice")
+    a, b, c = st.columns(3)
+    a.metric("Converted gross", f"{gross:.2f} bps")
+    b.metric("Net pickup", f"{base['pickup']:.2f} bps")
+    c.metric("Preferred", str(base["preferred_hedge"]).title())
+    st.line_chart({"hedge_cost": [r['hedge_cost'] for r in rows], "pickup": [r['pickup'] for r in rows], "benefit_of_rolling": [r['benefit_of_rolling_bp'] for r in rows]}, x="hedge_cost")
+    st.dataframe(rows, use_container_width=True)
     render_global_shell(); st.session_state.suggested_page = LEARNING_PATH[5]
     m=_get_market_state(st.session_state)
     spot,usd,huf,basis=float(m["spot_fx"]),float(m["usd_rate"]),float(m["huf_rate"]),float(m["basis_bps"])
@@ -83,6 +110,9 @@ def render_page() -> None:
     )
     learning_hint("Rolling hedges can lose after volatility-scaled roll risk penalties.")
     render_calculation_windows([
+        CalculationWindow("Conversion factor", r"CF=F/S", f"$F={fwd:.4f}, S={spot:.4f}$", ("CF translates spread across FX quote space.",), result=f"{cf:.6f}"),
+        CalculationWindow("Translated gross pickup", r"\text{gross}_{tr}=\text{gross}\times CF", f"$\text{{gross}}={(huf - usd) * 10_000:.2f}, CF={cf:.6f}$", ("Positive is favorable before costs.",), result=f"{gross:.2f} bps"),
+        CalculationWindow("Net hedged pickup", r"\text{Net}=\text{Gross}-\text{Hedge}-\text{Basis}-\text{Extra}", f"${gross:.2f}-35.00-{abs(basis):.2f}-8.00$", ("Higher positive net is better.",), result=f"{base['pickup']:.2f} bps"),
         CalculationWindow("Simple conversion factor", r"CF_{simple}=F/S", f"$F={fwd:.4f}, S={spot:.4f}$", ("Simple tenor-matched ratio for quote translation.",), result=f"{simple_cf:.6f}"),
         CalculationWindow("Curve-aware conversion factor", r"CF_{curve}=\sum_i w_i(F_i/S)", f"$\\sum_i w_i=1, S={spot:.4f}$", ("Weights use discount-factor annuity terms across tenor buckets.",), result=f"{curve_cf:.6f}"),
         CalculationWindow("Spread translation round-trip", r"\text{HUF bp}\to\text{USD bp}\to\text{HUF bp}", f"${round_trip['huf_bp_in']:.2f}\\to{round_trip['usd_bp_translated']:.2f}\\to{round_trip['huf_bp_round_trip']:.2f}$", ("Residual near zero validates conversion consistency.",), result=f"residual={round_trip['round_trip_residual_bp']:.6f} bp | tol={round_trip['tolerance_bp']:.6f} | pass={round_trip['round_trip_within_tolerance']}"),

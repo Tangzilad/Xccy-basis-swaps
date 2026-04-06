@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import streamlit as st
 
+from src.controllers.market_state_controller import make_stress_table
+from src.state.session_access import get_canonical_market_context
 from src.controllers.market_state_controller import make_stress_table, summarize_for_shell
 from ui_shell import LEARNING_PATH, ensure_market_state_initialized, learning_hint, render_global_shell
 
@@ -10,6 +12,9 @@ ensure_market_state_initialized()
 render_global_shell()
 st.session_state.suggested_page = LEARNING_PATH[0]
 
+context = get_canonical_market_context(st.session_state)
+state = context["state"]
+summary = context["summary_1y"]["base"]
 market_state = st.session_state["market_state"]
 base_snapshot = market_state["base_snapshot"]
 stressed_snapshot = market_state["stressed_snapshot"]
@@ -22,12 +27,12 @@ st.markdown("## 1. Start here")
 summary_col, status_col = st.columns([2, 1])
 with summary_col:
     st.write(
-        "Use the sidebar controls to set a shared market state. Then move through pages in order to build "
+        "Use the sidebar controls to set a shared canonical market state. Then move through pages in order to build "
         "intuition from mechanics to implementation."
     )
 with status_col:
-    st.metric("Mode", str(state_snapshot["mode"]))
-    st.metric("Basis", f"{state_snapshot['cross_currency_basis_bps']:.0f} bps")
+    st.metric("Mode", str(st.session_state.get("mode", "Basic")))
+    st.metric("Basis (1Y)", f"{summary['basis_bps']:.0f} bps")
 
 st.markdown("### Suggested learning path")
 for step in LEARNING_PATH:
@@ -39,6 +44,11 @@ learning_hint(
 )
 
 st.markdown("### Base vs stressed snapshots")
+base_snapshot = state["base_snapshot"]
+stressed_snapshot = state["stressed_snapshot"]
+
+c1, c2, c3 = st.columns(3)
+c1.metric("Scenario", state.get("scenario", "none"))
 c1, c2, c3 = st.columns(3)
 c1.metric("Scenario", market_state.get("scenario", "none"))
 c2.metric("Base spot", f"{base_snapshot['spot_fx']:.2f}")
