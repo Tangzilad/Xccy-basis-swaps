@@ -4,8 +4,10 @@ import math
 
 from src.analytics.parity import (
     cip_theoretical_forward,
+    fair_value_comparison,
     implied_huf_rate_from_spot_forward,
     implied_usd_rate_from_spot_forward,
+    observed_forward_from_basis_spread,
     raw_basis_wedge_bp,
 )
 
@@ -36,3 +38,34 @@ def test_raw_basis_wedge_sign_checks_follow_convention():
 
     assert wedge_positive > 0
     assert wedge_negative < 0
+
+
+def test_observed_forward_from_basis_preserves_wedge_sign_identity() -> None:
+    spot = 372.0
+    usd_rate = 0.051
+    huf_rate = 0.073
+    t = 1.0
+
+    for basis in (-0.0012, 0.0, 0.0012):
+        observed = observed_forward_from_basis_spread(spot, usd_rate, huf_rate, basis, t)
+        wedge = raw_basis_wedge_bp(spot, observed, usd_rate, huf_rate, t)
+        assert math.isclose(wedge, basis * 10_000.0, rel_tol=0.0, abs_tol=1e-10)
+
+
+def test_forward_difference_and_raw_wedge_share_sign_convention() -> None:
+    spot = 360.0
+    usd_rate = 0.046
+    huf_rate = 0.067
+    t = 1.0
+    fair = cip_theoretical_forward(spot, usd_rate, huf_rate, t)
+
+    high = fair + 2.0
+    low = fair - 2.0
+
+    high_cmp = fair_value_comparison(spot, high, usd_rate, huf_rate, t)
+    low_cmp = fair_value_comparison(spot, low, usd_rate, huf_rate, t)
+
+    assert high_cmp["forward_difference"] > 0
+    assert high_cmp["raw_basis_wedge_bp"] > 0
+    assert low_cmp["forward_difference"] < 0
+    assert low_cmp["raw_basis_wedge_bp"] < 0

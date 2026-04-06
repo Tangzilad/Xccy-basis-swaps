@@ -1,8 +1,7 @@
 from __future__ import annotations
 
-from src.state.session_access import get_canonical_market_context
 from src.analytics.parity import parity_decomposition, tenor_ladder_decomposition, tenor_to_year_fraction
-
+from src.state.session_access import get_canonical_market_context
 
 TENOR_LADDER = ["3M", "6M", "1Y", "2Y", "5Y", "10Y"]
 WORKED_EXAMPLE = {
@@ -22,17 +21,22 @@ REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
 )
 
 
-def _as_decimal(v: float) -> float:
-    return v / 100.0 if v > 1 else v
-
-
 def _from_decimal(v: float) -> float:
     return v * 100.0 if v < 1 else v
 
 
+def _get_market_state(session_state: dict) -> object:
+    return session_state.get("market_state")
+
+
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
+    from streamlit_calc_helpers import (
+        CalculationWindow,
+        SignConventionContext,
+        render_required_calculation_windows,
+        render_shared_sign_convention,
+    )
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="3. Parity lab", page_icon="📘", layout="wide")
@@ -40,13 +44,6 @@ def render_page() -> None:
     st.session_state.suggested_page = LEARNING_PATH[2]
 
     st.title("3. Parity lab")
-    a, b, c = st.columns(3)
-    a.metric("Observed 1Y", f"{one['observed_forward']:.4f}")
-    b.metric("Fair 1Y", f"{one['fair_forward_no_basis']:.4f}")
-    c.metric("Raw wedge", f"{one['raw_basis_wedge_bp']:.2f} bps")
-    st.line_chart({"tenor": [r["tenor"] for r in rows], "wedge": [r["raw_basis_wedge_bp"] for r in rows]}, x="tenor")
-    st.dataframe(rows, use_container_width=True)
-    st.write("Observed forwards are benchmarked versus no-basis CIP fair values.")
     context = get_canonical_market_context(st.session_state)
     base_summary = context["summary_1y"]["base"]
     default_spot = float(base_summary["spot_fx"])
@@ -119,6 +116,21 @@ def render_page() -> None:
         year_fraction=tenor_years,
     )
 
+    ladder = tenor_ladder_decomposition(
+        spot_huf_per_usd=spot,
+        usd_rate=usd_rate,
+        huf_rate=huf_rate,
+        tenor_labels=TENOR_LADDER,
+        anchor_observed_forward=observed_forward,
+        anchor_tenor_label=tenor_label,
+    )
+    one = next(row for row in ladder if row["tenor"] == "1Y")
+
+    summary_a, summary_b, summary_c = st.columns(3)
+    summary_a.metric("Observed 1Y", f"{one['observed_forward']:.4f}")
+    summary_b.metric("Fair 1Y", f"{one['cip_implied_forward']:.4f}")
+    summary_c.metric("Raw wedge", f"{one['raw_basis_wedge_bp']:.2f} bps")
+
     st.subheader("Decomposition outputs")
     c1, c2, c3 = st.columns(3)
     c1.metric("CIP-implied forward", f"{breakdown['cip_implied_forward']:.4f}")
@@ -130,21 +142,10 @@ def render_page() -> None:
     c5.metric("Relative forward diff", f"{breakdown['forward_relative_bp']:.2f} bp")
     c6.metric("Raw basis wedge", f"{breakdown['raw_basis_wedge_bp']:.2f} bp")
 
-    sign_convention_text = (
-        "**Sign convention (HUF per USD):** "
-        "A **positive** raw basis wedge means the observed forward is high vs no-basis CIP, "
-        "so implied HUF funding is richer (worse for synthetic USD borrowing via HUF). "
-        "A **negative** wedge means observed forward is low vs CIP and synthetic USD funding is cheaper."
-    )
-    st.markdown(sign_convention_text)
-
-    ladder = tenor_ladder_decomposition(
-        spot_huf_per_usd=spot,
-        usd_rate=usd_rate,
-        huf_rate=huf_rate,
-        tenor_labels=TENOR_LADDER,
-        anchor_observed_forward=observed_forward,
-        anchor_tenor_label=tenor_label,
+    st.markdown(
+        "**Sign convention (HUF per USD):** A **positive** raw basis wedge means the observed forward "
+        "is high vs no-basis CIP, so implied HUF funding is richer. A **negative** wedge means "
+        "observed forward is low vs CIP and synthetic USD funding is cheaper."
     )
 
     st.subheader("Tenor ladder")
@@ -163,7 +164,6 @@ def render_page() -> None:
         },
         x="tenor",
     )
-
     st.dataframe(
         [
             {
@@ -178,65 +178,144 @@ def render_page() -> None:
         ],
         use_container_width=True,
     )
+    st.write("Observed forwards are benchmarked versus no-basis CIP fair values.")
 
     learning_hint("Persistent wedge signals parity stress.")
 
     calc_windows = {
         "theoretical_forward": CalculationWindow(
-            "Theoretical forward",
-            r"F_{CIP}=S\frac{1+r_{HUF}T}{1+r_{USD}T}",
-            f"$S={spot:.4f}, r_{{HUF}}={huf_rate:.4%}, r_{{USD}}={usd_rate:.4%}, T={tenor_years:.2f}$",
-            sign_convention_notes=("Higher HUF rate lifts HUF-per-USD forward.",),
+            title="Theoretical forward",
+            concept_meaning="No-basis CIP-implied forward under current spot and interest curves.",
+            why_it_matters="Reference level used to diagnose parity dislocations.",
+            formula=r"F_{CIP}=S\frac{1+r_{HUF}T}{1+r_{USD}T}",
+            methodology_rationale="Apply covered interest parity with HUF-per-USD quote convention.",
+            inputs_used="Spot (HUF/USD), HUF and USD annualized rates, tenor in years.",
+            substituted_values=f"$S={spot:.4f}, r_{{HUF}}={huf_rate:.4%}, r_{{USD}}={usd_rate:.4%}, T={tenor_years:.2f}$",
+            derivation_steps=("Compute gross HUF and USD accrual factors.", "Take their ratio.", "Multiply by spot.",),
+            assumptions=("Simple compounding over tenor T.",),
+            interpretation="Higher HUF rates raise the no-basis HUF-per-USD forward.",
+            common_misunderstandings=("Treating CIP forward as identical to observed forward in stressed markets.",),
             result=f"{breakdown['cip_implied_forward']:.4f}",
             expanded=True,
         ),
         "implied_huf_rate": CalculationWindow(
-            "Implied HUF rate",
-            r"r_{HUF}^{impl}=\frac{(F/S)(1+r_{USD}T)-1}{T}",
-            f"$F={observed_forward:.4f}, S={spot:.4f}, r_{{USD}}={usd_rate:.4%}, T={tenor_years:.2f}$",
-            sign_convention_notes=("Above market HUF curve implies positive wedge.",),
+            title="Implied HUF rate",
+            concept_meaning="HUF rate implied by observed spot-forward pair given USD curve.",
+            why_it_matters="Lets us compare market-implied HUF funding versus curve HUF funding.",
+            formula=r"r_{HUF}^{impl}=\frac{(F/S)(1+r_{USD}T)-1}{T}",
+            methodology_rationale="Rearrange CIP to solve for HUF rate from observed forward.",
+            inputs_used="Observed forward, spot, USD rate, tenor.",
+            substituted_values=f"$F={observed_forward:.4f}, S={spot:.4f}, r_{{USD}}={usd_rate:.4%}, T={tenor_years:.2f}$",
+            derivation_steps=("Compute forward ratio F/S.", "Scale by USD accrual factor.", "Back out annualized implied HUF rate.",),
+            assumptions=("Observed forward is executable for chosen tenor.",),
+            interpretation="Above market HUF curve implies positive wedge.",
+            common_misunderstandings=("Comparing implied HUF directly to USD curve instead of HUF curve.",),
             result=f"{breakdown['implied_huf_rate']:.4%}",
         ),
         "implied_usd_rate": CalculationWindow(
-            "Implied USD rate",
-            r"r_{USD}^{impl}=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}",
-            f"$F={observed_forward:.4f}, S={spot:.4f}, r_{{HUF}}={huf_rate:.4%}, T={tenor_years:.2f}$",
-            sign_convention_notes=("Higher implied USD means worse synthetic USD funding.",),
+            title="Implied USD rate",
+            concept_meaning="USD rate implied by observed forward when HUF curve is taken as anchor.",
+            why_it_matters="Represents synthetic USD funding cost inferred from FX markets.",
+            formula=r"r_{USD}^{impl}=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}",
+            methodology_rationale="Solve CIP inversion for USD side while holding HUF curve fixed.",
+            inputs_used="Observed forward, spot, HUF rate, tenor.",
+            substituted_values=f"$F={observed_forward:.4f}, S={spot:.4f}, r_{{HUF}}={huf_rate:.4%}, T={tenor_years:.2f}$",
+            derivation_steps=("Build HUF accrual factor.", "Divide by forward ratio.", "Convert to annualized implied USD rate.",),
+            assumptions=("Single-period parity approximation.",),
+            interpretation="Higher implied USD means worse synthetic USD funding.",
+            common_misunderstandings=("Confusing implied USD with actual policy rate expectations.",),
             result=f"{breakdown['implied_usd_rate']:.4%}",
         ),
         "raw_basis_wedge": CalculationWindow(
-            "Raw basis wedge",
-            r"\text{Wedge}_{bp}=(r_{HUF}^{impl}-r_{HUF})\times 10{,}000",
-            f"$({breakdown['implied_huf_rate']:.6f}-{huf_rate:.6f})\times10,000$",
-            sign_convention_notes=(
-                "Positive = observed forward above no-basis CIP under HUF/USD convention.",
-                "Negative = observed forward below no-basis CIP.",
-            ),
+            title="Raw basis wedge",
+            concept_meaning="Gap between implied and curve HUF funding in basis points.",
+            why_it_matters="Core parity stress signal under a consistent sign convention.",
+            formula=r"\text{Wedge}_{bp}=(r_{HUF}^{impl}-r_{HUF})\times 10{,}000",
+            methodology_rationale="Compare implied HUF rate from FX with direct HUF curve rate.",
+            inputs_used="Implied HUF rate and market HUF curve rate.",
+            substituted_values=f"$({breakdown['implied_huf_rate']:.6f}-{huf_rate:.6f})\\times10,000$",
+            derivation_steps=("Compute implied-minus-curve spread.", "Multiply by 10,000 to express bps.",),
             result=f"{breakdown['raw_basis_wedge_bp']:.2f} bp",
+            assumptions=("HUF/USD quote convention is preserved throughout.",),
+            interpretation="Positive = observed forward above no-basis CIP under HUF/USD convention.",
+            common_misunderstandings=(
+                "Negative wedge does not necessarily imply free arbitrage after costs.",
+                "Sign flips if quote convention changes.",
+            ),
         ),
-        "forward_difference": CalculationWindow(
-            "Forward difference",
-            r"\Delta F=F_{obs}-F_{CIP}",
-            f"${observed_forward:.4f}-{breakdown['cip_implied_forward']:.4f}$",
-            result=f"{breakdown['forward_difference']:.4f}",
+        "synthetic_funding_cost": CalculationWindow(
+            title="Synthetic funding cost",
+            concept_meaning="Approximate synthetic USD borrowing cost inferred from parity.",
+            why_it_matters="Connects parity decomposition to funding decision-making.",
+            formula=r"\text{Synthetic USD cost} \approx r_{USD}^{impl}",
+            methodology_rationale="Use implied USD rate as first-pass synthetic funding estimate.",
+            inputs_used="Implied USD rate extracted from spot-forward parity.",
+            substituted_values="Using implied USD rate from spot-forward parity decomposition.",
+            derivation_steps=("Compute implied USD rate.", "Use as synthetic funding proxy.",),
+            assumptions=("Secondary execution frictions are excluded on this page.",),
+            interpretation="Higher implied value means poorer synthetic funding economics.",
+            common_misunderstandings=("Assuming this already includes transaction/friction adjustments.",),
+            result=f"{breakdown['implied_usd_rate']:.4%}",
         ),
-        "relative_forward_difference": CalculationWindow(
-            "Relative forward difference",
-            r"\text{RelDiff}_{bp}=\left(\frac{F_{obs}}{F_{CIP}}-1\right)\times10{,}000",
-            f"$({observed_forward:.6f}/{breakdown['cip_implied_forward']:.6f}-1)\\times10,000$",
-            result=f"{breakdown['forward_relative_bp']:.2f} bp",
+        "friction_adjusted_arbitrage_band": CalculationWindow(
+            title="Friction-adjusted arbitrage band",
+            concept_meaning="Net tradable edge after subtracting implementation frictions.",
+            why_it_matters="Distinguishes visible wedge from actionable opportunity.",
+            formula=r"\text{Net edge}=\text{Raw wedge}-\text{Frictions}",
+            methodology_rationale="Later pages layer cost bands over raw wedge diagnostics.",
+            inputs_used="Raw wedge and total friction estimate (not modeled here).",
+            substituted_values="Friction inputs are not modelled on this page; interpret raw wedge before costs.",
+            derivation_steps=("Take raw wedge.", "Subtract modeled friction band (on later pages).",),
+            assumptions=("Friction calibration deferred to dedicated page.",),
+            interpretation="Displayed as placeholder here; requires friction model inputs.",
+            common_misunderstandings=("Treating raw wedge alone as directly tradable.",),
+            result="N/A on this page",
+        ),
+        "hedged_pickup": CalculationWindow(
+            title="Hedged pickup",
+            concept_meaning="Risk-managed carry after hedge and basis implementation costs.",
+            why_it_matters="Critical metric for strategy attractiveness.",
+            formula=r"\text{Pickup}=\text{Carry}-\text{Hedge costs}",
+            methodology_rationale="Later modules decompose carry into executable net pickup.",
+            inputs_used="Carry, hedge cost, basis drag, and friction terms (later pages).",
+            substituted_values="Carry and hedge implementation are shown in later pages.",
+            derivation_steps=("Compute gross carry.", "Subtract hedge implementation costs.", "Subtract residual frictions.",),
+            assumptions=("Placeholder only on this parity-focused page.",),
+            interpretation="Not computed here; introduced to maintain conceptual continuity.",
+            common_misunderstandings=("Confusing nominal yield differential with hedged pickup.",),
+            result="N/A on this page",
+        ),
+        "conversion_factor": CalculationWindow(
+            "Conversion factor",
+            r"CF=F/S",
+            f"$CF={observed_forward:.4f}/{spot:.4f}$",
+            result=f"{observed_forward / spot:.6f}",
+        ),
+        "stressed_vs_base_deltas": CalculationWindow(
+            title="Stressed vs base deltas",
+            concept_meaning="Scenario-change metric between stress and baseline states.",
+            why_it_matters="Supports attribution when moving from diagnosis to stress testing.",
+            formula=r"\Delta x = x_{stress}-x_{base}",
+            methodology_rationale="Simple difference operator over matched metrics.",
+            inputs_used="Stress and base metric values for the same quantity.",
+            substituted_values="This page displays current-state decomposition only.",
+            derivation_steps=("Take stressed metric.", "Subtract base metric.",),
+            assumptions=("Scenario engine is used on dedicated stress page.",),
+            interpretation="Not calculated here; placeholder for downstream scenario module.",
+            common_misunderstandings=("Interpreting placeholder as computed output.",),
+            result="N/A on this page",
         ),
     }
     st.subheader("Calculation windows")
-    render_required_calculation_windows(
-        calc_windows,
-        required_keys=REQUIRED_CALCULATION_WINDOWS,
-        page_name="3. Parity lab",
-        default_expanded=False,
+    sign_context = SignConventionContext(
+        quote_convention="HUF per USD",
+        perspective="Parity decomposition from synthetic USD funding view via HUF market and observed forwards.",
+        positive_interpretation="Positive wedge/relative difference means observed forward is above no-basis CIP.",
+        negative_interpretation="Negative wedge/relative difference means observed forward is below no-basis CIP.",
     )
+    render_shared_sign_convention(sign_context)
+    render_required_calculation_windows(calc_windows, default_expanded=False, sign_convention=sign_context)
 
 
 if __name__ == "__main__":
-    render_page()
-else:
     render_page()
