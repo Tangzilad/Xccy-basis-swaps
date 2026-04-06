@@ -1,30 +1,12 @@
 from __future__ import annotations
 
-from src.analytics.conversion_factor import conversion_factor_from_fx
+from src.analytics.conversion_factor import conversion_factor_curve_aware, conversion_factor_from_fx, translate_spread_bp
 from src.analytics.frictions import friction_adjusted_arbitrage_band_bp
-from src.analytics.hedging import hedged_pickup_bp
+from src.analytics.funding import all_in_funding_decomposition
+from src.analytics.hedging import hedged_pickup_decomposition_bp, matched_vs_rolling_hedge_economics_bp
 from src.analytics.parity import fair_value_comparison
 from src.analytics.xccy_swap import synthetic_funding_cost_outputs
 from src.state.session_access import get_canonical_market_context
-
-
-def _baseline_market_state(session_state: dict) -> dict:
-    ms = session_state.get("market_state")
-    if isinstance(ms, dict) and "base_snapshot" in ms:
-        summary = get_canonical_market_context(session_state)["summary_1y"]["base"]
-        return {
-            "spot_fx": float(summary["spot_fx"]),
-            "usd_rate": float(summary["usd_rate"]),
-            "huf_rate": float(summary["huf_rate"]),
-            "basis_bps": float(summary["basis_bps"]),
-        }
-    return {
-        "spot_fx": float(session_state.get("spot_fx", 365.0)),
-        "usd_rate": float(session_state.get("base_rate", 4.25)) / 100.0,
-        "huf_rate": float(session_state.get("quote_rate", 5.0)) / 100.0,
-        "basis_bps": float(session_state.get("cross_currency_basis_bps", -22.0)),
-    }
-
 
 
 def _compute_metrics(snapshot: dict) -> dict:
@@ -33,18 +15,20 @@ def _compute_metrics(snapshot: dict) -> dict:
     basis_df = snapshot["basis_curve_df"].set_index("tenor")
     credit_df = snapshot["credit_assumptions"].set_index("tenor")
     friction_df = snapshot["friction_assumptions"].set_index("tenor")
+    forward_df = snapshot["market_forward_df"].set_index("tenor")
 
     spot = float(snapshot["spot_fx"])
     usd = float(usd_df.loc["1Y", "usd_zero_rate"])
     huf = float(huf_df.loc["1Y", "huf_zero_rate"])
     bps = float(basis_df.loc["1Y", "basis_bps"])
-
     basis = bps / 10_000.0
-    fwd = spot * (1 + (huf + basis)) / (1 + usd)
+
+    # Use observed market forward (not reconstructed from rates+basis)
+    fwd = float(forward_df.loc["1Y", "market_forward"])
     parity = fair_value_comparison(spot, fwd, usd, huf, 1.0)
 
     fr = friction_adjusted_arbitrage_band_bp(
-        abs(bps),
+        parity["raw_basis_wedge_bp"],
         float(credit_df.loc["1Y", "credit_spread_bps"]) * 0.6,
         float(friction_df.loc["1Y", "funding_friction_bps"]),
         float(credit_df.loc["1Y", "credit_spread_bps"]),
@@ -53,17 +37,61 @@ def _compute_metrics(snapshot: dict) -> dict:
         8.0,
     )
 
-    cf = conversion_factor_from_fx(spot, fwd)
-    pk = hedged_pickup_bp((huf - usd) * 10_000 * cf, 40.0, abs(bps), fr["total_friction_bp"] * 0.1)
+    funding = all_in_funding_decomposition(
+        domestic_curve_rate=huf,
+        foreign_curve_rate=usd,
+        basis_spread=basis,
+        extra_spread=0.0012,
+    )
+
+    # 1Y conversion factor from observed forward, plus a curve-aware ladder CF.
+    simple_cf = conversion_factor_from_fx(spot, fwd)
+    ladder_forwards = [
+        float(forward_df.loc[tenor, "market_forward"])
+        for tenor in ("3M", "6M", "1Y", "2Y", "5Y")
+        if tenor in forward_df.index
+    ]
+    ladder_years = [
+        float(forward_df.loc[tenor, "years"])
+        for tenor in ("3M", "6M", "1Y", "2Y", "5Y")
+        if tenor in forward_df.index
+    ]
+    ladder_discount = [1.0 / (1.0 + usd * year) for year in ladder_years]
+    curve_cf_payload = conversion_factor_curve_aware(
+        spot_huf_per_usd=spot,
+        forward_huf_per_usd_by_tenor=ladder_forwards,
+        tenor_years=ladder_years,
+        discount_factors=ladder_discount,
+    )
+    curve_cf = float(curve_cf_payload["conversion_factor"])
+
+    gross_pickup_translated = translate_spread_bp((huf - usd) * 10_000.0, curve_cf)
+    pickup = hedged_pickup_decomposition_bp(
+        gross_pickup_translated,
+        hedge_cost_bp=40.0,
+        basis_drag_bp=abs(bps),
+        extra_friction_bp=fr["total_friction_bp"] * 0.1,
+    )
+
+    hedge_choice = matched_vs_rolling_hedge_economics_bp(
+        matched_hedge_cost_bp=40.0,
+        expected_rolling_cost_bp=34.0,
+        roll_risk_proxy_bp=max(8.0, fr["total_friction_bp"] * 0.15),
+        risk_aversion_multiplier=0.6,
+    )
+
     syn = synthetic_funding_cost_outputs(spot, fwd, huf, basis, 1.0)
     return {
         "spot": spot,
         "forward": fwd,
         "basis_bps": bps,
         "parity": parity,
+        "funding": funding,
         "frictions": fr,
-        "conversion_factor": cf,
-        "pickup_bp": pk,
+        "conversion_factor_simple": simple_cf,
+        "conversion_factor_curve": curve_cf,
+        "pickup": pickup,
+        "hedge_choice": hedge_choice,
         "synthetic": syn,
     }
 
@@ -85,33 +113,95 @@ def render_page() -> None:
     rows = [
         {
             "state": "base",
-            "basis_bps": bm["basis_bps"],
-            "pickup_bp": bm["pickup_bp"],
-            "raw_wedge_bp": bm["parity"]["raw_basis_wedge_bp"],
+            "cip_wedge_bp": bm["parity"]["raw_basis_wedge_bp"],
+            "funding_gap_bp": bm["funding"]["cross_market_gap"] * 10_000.0,
+            "friction_adjusted_edge_bp": bm["frictions"]["net_edge_bp"],
+            "conversion_factor": bm["conversion_factor_curve"],
+            "hedged_pickup_bp": bm["pickup"]["net_hedged_pickup_bp"],
+            "preferred_hedge": bm["hedge_choice"]["preferred_hedge"],
         },
         {
             "state": "stressed",
-            "basis_bps": sm["basis_bps"],
-            "pickup_bp": sm["pickup_bp"],
-            "raw_wedge_bp": sm["parity"]["raw_basis_wedge_bp"],
+            "cip_wedge_bp": sm["parity"]["raw_basis_wedge_bp"],
+            "funding_gap_bp": sm["funding"]["cross_market_gap"] * 10_000.0,
+            "friction_adjusted_edge_bp": sm["frictions"]["net_edge_bp"],
+            "conversion_factor": sm["conversion_factor_curve"],
+            "hedged_pickup_bp": sm["pickup"]["net_hedged_pickup_bp"],
+            "preferred_hedge": sm["hedge_choice"]["preferred_hedge"],
         },
     ]
 
     st.title("7. HUF/USD strategy and stress lab")
     st.caption(f"Scenario: {context['state'].get('scenario', 'none')}")
     a, b, c = st.columns(3)
-    a.metric("Δ basis", f"{sm['basis_bps'] - bm['basis_bps']:.2f} bps")
-    b.metric("Δ pickup", f"{sm['pickup_bp'] - bm['pickup_bp']:.2f} bps")
-    c.metric("Stress actionable", "Yes" if sm["frictions"]["is_actionable"] else "No")
-    st.bar_chart({"state": [r['state'] for r in rows], "basis_bps": [r['basis_bps'] for r in rows], "pickup_bp": [r['pickup_bp'] for r in rows], "raw_wedge_bp": [r['raw_wedge_bp'] for r in rows]}, x="state")
+    a.metric("Δ CIP wedge", f"{sm['parity']['raw_basis_wedge_bp'] - bm['parity']['raw_basis_wedge_bp']:.2f} bps")
+    b.metric("Δ hedged pickup", f"{sm['pickup']['net_hedged_pickup_bp'] - bm['pickup']['net_hedged_pickup_bp']:.2f} bps")
+    c.metric("Stress preferred hedge", str(sm["hedge_choice"]["preferred_hedge"]).title())
+
+    st.bar_chart(
+        {
+            "state": [r["state"] for r in rows],
+            "cip_wedge_bp": [r["cip_wedge_bp"] for r in rows],
+            "friction_adjusted_edge_bp": [r["friction_adjusted_edge_bp"] for r in rows],
+            "hedged_pickup_bp": [r["hedged_pickup_bp"] for r in rows],
+        },
+        x="state",
+    )
     st.dataframe(rows, use_container_width=True)
-    st.write("Stress scenarios roll into parity, frictions, and pickup to assess strategy robustness.")
-    learning_hint("Check whether net pickup survives widened friction bands.")
+    st.write("Stress scenarios roll into CIP wedge, funding transformation, frictions, and hedge economics.")
+    learning_hint("Check whether net pickup survives widened friction bands and whether hedge preference flips.")
+
     render_calculation_windows([
-        CalculationWindow("Stressed raw wedge", r"(r_{HUF}^{impl}-r_{HUF})\times10{,}000", f"$S={sm['spot']:.4f}, F={sm['forward']:.4f}$", ("Positive wedge means richer implied HUF.",), result=f"{sm['parity']['raw_basis_wedge_bp']:.2f} bps"),
-        CalculationWindow("Stressed net edge", r"\text{Raw edge}-\text{Friction}", f"${sm['frictions']['raw_edge_bp']:.2f}-{sm['frictions']['total_friction_bp']:.2f}$", ("Costs reduce tradeability.",), result=f"{sm['frictions']['net_edge_bp']:.2f} bps"),
-        CalculationWindow("Stressed hedged pickup", r"\text{Gross}-\text{hedge}-\text{basis}-\text{extra}", f"$CF={sm['conversion_factor']:.6f}, basis={abs(sm['basis_bps']):.2f}$", ("Positive pickup remains attractive.",), result=f"{sm['pickup_bp']:.2f} bps"),
+        CalculationWindow(
+            "Stressed CIP wedge",
+            r"(r_{HUF}^{impl}-r_{HUF})\times10{,}000",
+            f"$S={sm['spot']:.4f}, F_{{mkt,1Y}}={sm['forward']:.4f}$",
+            ("Uses observed market forward tenor instead of a constructed forward.",),
+            result=f"{sm['parity']['raw_basis_wedge_bp']:.2f} bps",
+        ),
+        CalculationWindow(
+            "Stressed funding transformation",
+            r"\Delta r = r_{syn,dom} - r_{dir,dom}",
+            f"${sm['funding']['synthetic_all_in']:.6f}-{sm['funding']['domestic_all_in']:.6f}$",
+            ("Positive means synthetic HUF funding is less economical than direct.",),
+            result=f"{sm['funding']['cross_market_gap'] * 10_000:.2f} bps",
+        ),
+        CalculationWindow(
+            "Stressed friction-adjusted edge",
+            r"\text{CIP wedge}-\text{Friction}",
+            f"${sm['frictions']['raw_edge_bp']:.2f}-{sm['frictions']['total_friction_bp']:.2f}$",
+            ("Actionable only if absolute wedge exceeds friction band.",),
+            result=f"{sm['frictions']['net_edge_bp']:.2f} bps",
+        ),
+        CalculationWindow(
+            "Stressed conversion factor",
+            r"CF_{curve}=\sum_i w_i(F_i/S)",
+            f"$CF_{{simple}}={sm['conversion_factor_simple']:.6f},\\;CF_{{curve}}={sm['conversion_factor_curve']:.6f}$",
+            ("Curve-aware CF uses observed forward ladder and tenor-weighting.",),
+            result=f"{sm['conversion_factor_curve']:.6f}",
+        ),
+        CalculationWindow(
+            "Stressed hedged pickup",
+            r"\text{Net}=\text{Gross}-\text{Hedge}-\text{Basis}-\text{Extra}",
+            f"${sm['pickup']['gross_pickup_bp']:.2f}-{sm['pickup']['hedge_cost_bp']:.2f}-{sm['pickup']['basis_drag_bp']:.2f}-{sm['pickup']['extra_friction_bp']:.2f}$",
+            ("Positive pickup remains attractive after implementation costs.",),
+            result=f"{sm['pickup']['net_hedged_pickup_bp']:.2f} bps",
+        ),
+        CalculationWindow(
+            "Stressed preferred hedge choice",
+            r"\text{choose rolling if } C_m-(C_r+\lambda\sigma)>0",
+            f"$C_m={sm['hedge_choice']['matched_cost_bp']:.2f}, C_r={sm['hedge_choice']['expected_rolling_cost_bp']:.2f}, \\sigma={sm['hedge_choice']['roll_risk_proxy_bp']:.2f}$",
+            ("Compares matched cost against risk-adjusted rolling alternative.",),
+            result=f"{str(sm['hedge_choice']['preferred_hedge']).title()}",
+        ),
     ])
+
+    st.subheader("Scenario conclusion prompts")
+    st.markdown("- What changed?\n- Why it changed?\n- Would I still do the trade?")
+    if hasattr(st, "text_area"):
+        st.text_area("What changed?", key="stress_conclusion_what_changed", height=90)
+        st.text_area("Why it changed?", key="stress_conclusion_why_changed", height=90)
+        st.text_area("Would I still do the trade?", key="stress_conclusion_do_trade", height=90)
 
 
 if __name__ == "__main__":

@@ -4,37 +4,6 @@ from src.analytics.frictions import friction_adjusted_arbitrage_band_bp
 from src.state.session_access import get_canonical_market_context
 
 
-def _get_market_state(session_state: dict) -> dict:
-    ms = session_state.get("market_state")
-    if isinstance(ms, dict):
-        return ms
-    if ms is not None:
-        return {
-            "basis_bps": float(ms.basis_curve.iloc[0]["basis_bps"]),
-            "capital_charge_bp": 9.0,
-            "funding_spread_bp": 6.0,
-            "cva_proxy_bp": 4.0,
-            "fva_proxy_bp": 3.0,
-            "clearing_friction_bp": 2.0,
-            "liquidity_repo_friction_bp": 5.0,
-            "counterparty_quality_multiplier": 1.0,
-            "capacity_multiplier": 1.0,
-        }
-    fallback = {
-        "basis_bps": -22.0,
-        "capital_charge_bp": 9.0,
-        "funding_spread_bp": 6.0,
-        "cva_proxy_bp": 4.0,
-        "fva_proxy_bp": 3.0,
-        "clearing_friction_bp": 2.0,
-        "liquidity_repo_friction_bp": 5.0,
-        "counterparty_quality_multiplier": 1.0,
-        "capacity_multiplier": 1.0,
-    }
-    session_state["market_state"] = fallback
-    return fallback
-
-
 def render_page() -> None:
     import streamlit as st
     from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
@@ -68,7 +37,6 @@ def render_page() -> None:
             }
         )
     base = next(r for r in rows if r["capacity"] == 1.0)
-    m = _get_market_state(st.session_state)
 
     st.title("5. Persistence / XVA / arbitrage limits")
     a, b, c = st.columns(3)
