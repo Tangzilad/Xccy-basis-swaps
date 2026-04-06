@@ -12,6 +12,12 @@ pytest.importorskip("pandas")
 
 
 class _SessionState(dict):
+    _write_counts: dict[str, int]
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._write_counts = {}
+
     def __getattr__(self, name):
         try:
             return self[name]
@@ -19,7 +25,13 @@ class _SessionState(dict):
             raise AttributeError(name) from exc
 
     def __setattr__(self, name, value):
+        if name == "_write_counts":
+            return super().__setattr__(name, value)
         self[name] = value
+
+    def __setitem__(self, key, value):
+        self._write_counts[str(key)] = self._write_counts.get(str(key), 0) + 1
+        return super().__setitem__(key, value)
 
 
 class _Ctx:
@@ -149,6 +161,25 @@ def _build_shared_page_helpers_stub() -> types.ModuleType:
     return helpers
 
 
+def _build_calc_helpers_stub() -> types.ModuleType:
+    calc = types.ModuleType("streamlit_calc_helpers")
+
+    class _Window:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class _SignConventionContext:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    calc.CalculationWindow = _Window
+    calc.SignConventionContext = _SignConventionContext
+    calc.render_calculation_windows = lambda *a, **k: None
+    calc.render_required_calculation_windows = lambda *a, **k: None
+    calc.render_shared_sign_convention = lambda *a, **k: None
+    return calc
+
+
 @pytest.mark.parametrize(
     "module_name",
     [
@@ -169,12 +200,14 @@ def test_each_page_imports_and_renders_with_mocked_market_state(monkeypatch, mod
     monkeypatch.setitem(sys.modules, "streamlit", stub)
     monkeypatch.setitem(sys.modules, "ui_shell", shell_stub)
     monkeypatch.setitem(sys.modules, "shared_page_helpers", helpers_stub)
+    monkeypatch.setitem(sys.modules, "streamlit_calc_helpers", _build_calc_helpers_stub())
     sys.modules.pop(module_name, None)
 
     importlib.import_module(module_name)
 
     assert "suggested_page" in stub.session_state
     assert stub.page_config_calls == 1
+    assert stub.session_state._write_counts.get("suggested_page", 0) == 1
 
 
 @pytest.mark.parametrize(
@@ -252,8 +285,30 @@ def test_xccy_mechanics_contains_basis_swap_decomposition_heading(monkeypatch):
     monkeypatch.setitem(sys.modules, "streamlit", stub)
     monkeypatch.setitem(sys.modules, "ui_shell", shell_stub)
     monkeypatch.setitem(sys.modules, "shared_page_helpers", helpers_stub)
+    monkeypatch.setitem(sys.modules, "streamlit_calc_helpers", _build_calc_helpers_stub())
     sys.modules.pop("pages.2_XCCY_mechanics", None)
 
     importlib.import_module("pages.2_XCCY_mechanics")
 
     assert "Decompose basis swap into a strip of FX forwards" in stub.expander_labels
+
+
+def test_page_import_order_preserves_canonical_market_state_shape(monkeypatch):
+    """Importing multiple pages should not degrade canonical market-state structure."""
+    stub = _build_streamlit_stub()
+    monkeypatch.setitem(sys.modules, "streamlit", stub)
+    monkeypatch.setitem(sys.modules, "ui_shell", _build_ui_shell_stub())
+    monkeypatch.setitem(sys.modules, "streamlit_calc_helpers", _build_calc_helpers_stub())
+
+    # Use real helper/state stack so this test covers normalization behavior.
+    sys.modules.pop("shared_page_helpers", None)
+    sys.modules.pop("pages.3_Parity_lab", None)
+    sys.modules.pop("pages.4_Market_basis_and_funding_transformation", None)
+
+    importlib.import_module("pages.3_Parity_lab")
+    importlib.import_module("pages.4_Market_basis_and_funding_transformation")
+
+    market_state = stub.session_state.get("market_state")
+    assert isinstance(market_state, dict)
+    for required_key in ("seed", "regime", "base_snapshot", "stressed_snapshot", "scenario"):
+        assert required_key in market_state

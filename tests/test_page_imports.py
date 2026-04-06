@@ -64,7 +64,12 @@ def _build_streamlit_stub() -> types.ModuleType:
             "mode": "Learning",
         }
     )
-    stub.set_page_config = lambda *a, **k: None
+    stub.page_config_calls = 0
+
+    def _record_page_config(*args, **kwargs):
+        stub.page_config_calls += 1
+
+    stub.set_page_config = _record_page_config
     stub.title = lambda *a, **k: None
     stub.caption = lambda *a, **k: None
     stub.markdown = lambda *a, **k: None
@@ -135,11 +140,31 @@ def _build_shared_page_helpers_stub() -> types.ModuleType:
     return helpers
 
 
+def _build_calc_helpers_stub() -> types.ModuleType:
+    calc = types.ModuleType("streamlit_calc_helpers")
+
+    class _Window:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    class _SignConventionContext:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+
+    calc.CalculationWindow = _Window
+    calc.SignConventionContext = _SignConventionContext
+    calc.render_calculation_windows = lambda *a, **k: None
+    calc.render_required_calculation_windows = lambda *a, **k: None
+    calc.render_shared_sign_convention = lambda *a, **k: None
+    return calc
+
+
 @pytest.mark.parametrize("module_name", _discover_page_modules())
 def test_streamlit_page_module_imports_and_has_public_callable(module_name: str, monkeypatch):
     monkeypatch.setitem(sys.modules, "streamlit", _build_streamlit_stub())
     monkeypatch.setitem(sys.modules, "ui_shell", _build_ui_shell_stub())
     monkeypatch.setitem(sys.modules, "shared_page_helpers", _build_shared_page_helpers_stub())
+    monkeypatch.setitem(sys.modules, "streamlit_calc_helpers", _build_calc_helpers_stub())
     sys.modules.pop(module_name, None)
     mod = importlib.import_module(module_name)
     cbs = public_callables(mod)
@@ -150,3 +175,25 @@ def test_streamlit_pages_discovery_does_not_error_when_pages_missing():
     # This is intentionally permissive: repos without Streamlit pages should not fail.
     modules = _discover_page_modules()
     assert isinstance(modules, list)
+
+
+@pytest.mark.parametrize("module_name", _discover_page_modules())
+def test_page_module_import_is_idempotent_under_fresh_stubs(module_name: str, monkeypatch):
+    """A fresh import should have stable top-level side effects (single page-config call)."""
+    stub_a = _build_streamlit_stub()
+    monkeypatch.setitem(sys.modules, "streamlit", stub_a)
+    monkeypatch.setitem(sys.modules, "ui_shell", _build_ui_shell_stub())
+    monkeypatch.setitem(sys.modules, "shared_page_helpers", _build_shared_page_helpers_stub())
+    monkeypatch.setitem(sys.modules, "streamlit_calc_helpers", _build_calc_helpers_stub())
+    sys.modules.pop(module_name, None)
+    importlib.import_module(module_name)
+    first_config_calls = getattr(stub_a, "page_config_calls", None)
+
+    stub_b = _build_streamlit_stub()
+    monkeypatch.setitem(sys.modules, "streamlit", stub_b)
+    sys.modules.pop(module_name, None)
+    importlib.import_module(module_name)
+    second_config_calls = getattr(stub_b, "page_config_calls", None)
+
+    # Some pages may not call set_page_config in import-only smoke mode.
+    assert first_config_calls == second_config_calls

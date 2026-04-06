@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from shared_page_helpers import get_market_params
+from src.state.session_access import normalize_session_market_state
 from src.state.market_state import apply_control_patch, init_market_state_from_generator, snapshot_for_narrative
 
 
@@ -79,3 +80,17 @@ def test_navigation_preserves_session_keys_and_scenario_selection(target_page: s
     assert set(session_state).issuperset(before_keys)
     assert session_state["selected_scenario"] == "stress"
     assert session_state["suggested_page"] == target_page
+
+
+def test_legacy_shallow_state_is_normalized_to_canonical_shape() -> None:
+    session_state = {
+        "market_state": {
+            "spot_fx": 371.0,
+            "base_rate": 4.9,
+            "quote_rate": 6.8,
+            "cross_currency_basis_bps": -32.0,
+        }
+    }
+    canonical = normalize_session_market_state(session_state, seed=19)
+    assert set(("seed", "regime", "base_snapshot", "stressed_snapshot", "scenario")).issubset(canonical.keys())
+    assert session_state["market_state"] is canonical
