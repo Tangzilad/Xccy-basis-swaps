@@ -63,6 +63,35 @@ def total_friction_bp(
     )
 
 
+def directional_net_edge_bp(raw_basis_edge_bp: float, total_friction_bp_value: float) -> float:
+    """Apply friction to raw edge while preserving shared sign conventions."""
+    if raw_basis_edge_bp > 0:
+        return raw_basis_edge_bp - total_friction_bp_value
+    if raw_basis_edge_bp < 0:
+        return raw_basis_edge_bp + total_friction_bp_value
+    return 0.0
+
+
+def deposit_adjusted_arbitrage_band_bp(
+    raw_basis_edge_bp: float,
+    base_friction_bp: float,
+    deposit_borrowing_bp: float,
+    cva_bp: float,
+    fva_bp: float,
+    capital_charge_bp: float,
+) -> dict[str, float | bool]:
+    """Compose total friction from model output plus deposit/XVA/capital overlays."""
+    overlay_friction_bp = deposit_borrowing_bp + cva_bp + fva_bp + capital_charge_bp
+    total_friction = base_friction_bp + overlay_friction_bp
+    return {
+        "base_friction_bp": base_friction_bp,
+        "overlay_friction_bp": overlay_friction_bp,
+        "total_friction_bp": total_friction,
+        "net_edge_bp": directional_net_edge_bp(raw_basis_edge_bp, total_friction),
+        "is_actionable": abs(raw_basis_edge_bp) > total_friction,
+    }
+
+
 def friction_adjusted_arbitrage_band_bp(
     raw_basis_edge_bp: float,
     capital_charge_bp: float,
@@ -95,13 +124,10 @@ def friction_adjusted_arbitrage_band_bp(
     )
 
     if raw_basis_edge_bp > 0:
-        net_edge = raw_basis_edge_bp - friction
         sign_case = "positive_raw_edge"
     elif raw_basis_edge_bp < 0:
-        net_edge = raw_basis_edge_bp + friction
         sign_case = "negative_raw_edge"
     else:
-        net_edge = 0.0
         sign_case = "zero_raw_edge"
 
     return {
@@ -109,7 +135,7 @@ def friction_adjusted_arbitrage_band_bp(
         "total_friction_bp": friction,
         "upper_band_bp": friction,
         "lower_band_bp": -friction,
-        "net_edge_bp": net_edge,
+        "net_edge_bp": directional_net_edge_bp(raw_basis_edge_bp, friction),
         "is_actionable": abs(raw_basis_edge_bp) > friction,
         "sign_case": sign_case,
     }

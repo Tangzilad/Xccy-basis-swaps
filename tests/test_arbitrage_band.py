@@ -2,6 +2,7 @@ import math
 
 import pytest
 
+from src.analytics.frictions import deposit_adjusted_arbitrage_band_bp
 from tests._test_utils import CANDIDATE_MODULES, try_import_any
 
 
@@ -34,3 +35,28 @@ def test_project_arbitrage_band_module_exposes_callables_when_present():
         pytest.skip("No arbitrage_band module found in this repository.")
     callables = [name for name in dir(mod) if callable(getattr(mod, name)) and not name.startswith("_")]
     assert callables
+
+
+def test_deposit_adjusted_actionability_transition_with_overlay_increase() -> None:
+    baseline = deposit_adjusted_arbitrage_band_bp(
+        raw_basis_edge_bp=40.0,
+        base_friction_bp=18.0,
+        deposit_borrowing_bp=5.0,
+        cva_bp=3.0,
+        fva_bp=2.0,
+        capital_charge_bp=1.0,
+    )
+    stressed = deposit_adjusted_arbitrage_band_bp(
+        raw_basis_edge_bp=40.0,
+        base_friction_bp=18.0,
+        deposit_borrowing_bp=11.0,
+        cva_bp=5.0,
+        fva_bp=4.0,
+        capital_charge_bp=3.0,
+    )
+
+    assert baseline["is_actionable"] is True
+    assert baseline["net_edge_bp"] == pytest.approx(11.0)
+
+    assert stressed["is_actionable"] is False
+    assert stressed["net_edge_bp"] == pytest.approx(-1.0)
