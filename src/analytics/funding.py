@@ -24,6 +24,16 @@ class IssuanceChoice:
     savings_bp: float
 
 
+@dataclass(frozen=True, slots=True)
+class IssuanceSpreadDecision:
+    """Issuance rule evaluation using direct spread inputs (in bps)."""
+
+    direct_spread_bp: float
+    synthetic_spread_bp: float
+    preferred_route: str
+    savings_bp: float
+
+
 def four_view_funding_decomposition(
     domestic_curve_rate: float,
     foreign_curve_rate: float,
@@ -157,6 +167,71 @@ def issuance_choice(
         preferred_route=preferred,
         savings_bp=savings,
     )
+
+
+def synthetic_usd_spread_from_huf(
+    *,
+    huf_spread_bp: float,
+    conversion_factor: float,
+    basis_bp: float,
+) -> float:
+    """Synthetic USD spread from HUF issuance and swapping.
+
+    Formula (bps): ``USD_synthetic = HUF_spread * CF + basis``.
+    """
+    return huf_spread_bp * conversion_factor + basis_bp
+
+
+def synthetic_huf_spread_from_usd(
+    *,
+    usd_spread_bp: float,
+    conversion_factor: float,
+    basis_bp: float,
+) -> float:
+    """Synthetic HUF spread from USD issuance and swapping.
+
+    Rearranged from ``USD_synthetic = HUF_spread * CF + basis``:
+    ``HUF_synthetic = (USD_spread - basis) / CF``.
+    """
+    return (usd_spread_bp - basis_bp) / conversion_factor
+
+
+def issuance_decision_from_spreads(
+    *,
+    usd_spread_bp: float,
+    huf_spread_bp: float,
+    conversion_factor: float,
+    basis_bp: float,
+) -> dict[str, IssuanceSpreadDecision]:
+    """Evaluate direct-vs-synthetic issuance conditions for USD and HUF issuers."""
+    usd_synthetic_bp = synthetic_usd_spread_from_huf(
+        huf_spread_bp=huf_spread_bp,
+        conversion_factor=conversion_factor,
+        basis_bp=basis_bp,
+    )
+    huf_synthetic_bp = synthetic_huf_spread_from_usd(
+        usd_spread_bp=usd_spread_bp,
+        conversion_factor=conversion_factor,
+        basis_bp=basis_bp,
+    )
+
+    usd_preferred_route = "Issue HUF and swap into USD" if usd_spread_bp > usd_synthetic_bp else "Issue directly in USD"
+    huf_preferred_route = "Issue USD and swap into HUF" if huf_spread_bp > huf_synthetic_bp else "Issue directly in HUF"
+
+    return {
+        "USD": IssuanceSpreadDecision(
+            direct_spread_bp=usd_spread_bp,
+            synthetic_spread_bp=usd_synthetic_bp,
+            preferred_route=usd_preferred_route,
+            savings_bp=abs(usd_spread_bp - usd_synthetic_bp),
+        ),
+        "HUF": IssuanceSpreadDecision(
+            direct_spread_bp=huf_spread_bp,
+            synthetic_spread_bp=huf_synthetic_bp,
+            preferred_route=huf_preferred_route,
+            savings_bp=abs(huf_spread_bp - huf_synthetic_bp),
+        ),
+    }
 
 
 def funding_role_interpretation(role: str) -> str:
