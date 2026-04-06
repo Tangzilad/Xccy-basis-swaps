@@ -18,6 +18,28 @@ def hedged_pickup_bp(
     return gross_spread_pickup_bp - hedge_cost_bp - basis_drag_bp - extra_friction_bp
 
 
+def hedged_pickup_decomposition_bp(
+    gross_spread_pickup_bp: float,
+    hedge_cost_bp: float,
+    basis_drag_bp: float = 0.0,
+    extra_friction_bp: float = 0.0,
+) -> dict[str, float]:
+    """Return a component-by-component decomposition of hedged pickup."""
+    net_pickup = hedged_pickup_bp(
+        gross_spread_pickup_bp=gross_spread_pickup_bp,
+        hedge_cost_bp=hedge_cost_bp,
+        basis_drag_bp=basis_drag_bp,
+        extra_friction_bp=extra_friction_bp,
+    )
+    return {
+        "gross_pickup_bp": gross_spread_pickup_bp,
+        "hedge_cost_bp": hedge_cost_bp,
+        "basis_drag_bp": basis_drag_bp,
+        "extra_friction_bp": extra_friction_bp,
+        "net_hedged_pickup_bp": net_pickup,
+    }
+
+
 def roll_cost_and_risk_proxy_bp(
     current_roll_cost_bp: float,
     expected_roll_cost_bp: float,
@@ -28,6 +50,8 @@ def roll_cost_and_risk_proxy_bp(
     drift = expected_roll_cost_bp - current_roll_cost_bp
     roll_risk = roll_volatility_bp * (horizon_years**0.5)
     return {
+        "current_roll_cost_bp": current_roll_cost_bp,
+        "expected_roll_cost_bp": expected_roll_cost_bp,
         "expected_roll_drift_bp": drift,
         "roll_risk_proxy_bp": roll_risk,
     }
@@ -45,6 +69,9 @@ def matched_vs_rolling_hedge_economics_bp(
     preferred = "rolling" if benefit_of_rolling_bp > 0 else "matched"
     return {
         "matched_cost_bp": matched_hedge_cost_bp,
+        "expected_rolling_cost_bp": expected_rolling_cost_bp,
+        "roll_risk_proxy_bp": roll_risk_proxy_bp,
+        "risk_aversion_multiplier": risk_aversion_multiplier,
         "risk_adjusted_rolling_cost_bp": risk_adjusted_rolling_bp,
         "benefit_of_rolling_bp": benefit_of_rolling_bp,
         "preferred_hedge": preferred,
