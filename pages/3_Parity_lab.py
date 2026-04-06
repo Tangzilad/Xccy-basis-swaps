@@ -3,8 +3,6 @@ from __future__ import annotations
 import streamlit as st
 
 from shared_page_helpers import (
-    from_decimal,
-    get_market_params,
     render_page_footer,
     render_page_header,
 )
@@ -43,8 +41,14 @@ def _from_decimal(v: float) -> float:
     return v * 100.0 if v < 1 else v
 
 
-def _get_market_state(session_state: dict) -> object:
-    return session_state.get("market_state")
+def _parity_page_state(session_state: dict) -> dict:
+    market_state = session_state.setdefault("market_state", {})
+    page_state = market_state.setdefault("page_state", {})
+    parity_state = page_state.setdefault("parity_lab", {})
+    if not isinstance(parity_state, dict):
+        parity_state = {}
+        page_state["parity_lab"] = parity_state
+    return parity_state
 
 
 def render_page() -> None:
@@ -58,7 +62,8 @@ def render_page() -> None:
     st.session_state.suggested_page = LEARNING_PATH[2]
 
     # --- Market context ---
-    summary = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
+    context = get_canonical_market_context(st.session_state)
+    summary = context["summary_1y"]["base"]
     spot_ctx = float(summary["spot_fx"])
     usd_ctx = float(summary["usd_rate"])
     huf_ctx = float(summary["huf_rate"])
@@ -95,13 +100,8 @@ def render_page() -> None:
     # --- Interactive parity decomposition ---
     st.markdown("### Interactive Decomposition")
 
-    m = get_market_params(st.session_state)
-    default_spot = float(m["spot_fx"])
-    default_usd = from_decimal(float(m["usd_rate"]))
-    default_huf = from_decimal(float(m["huf_rate"]))
-
     st.title("3. Parity lab")
-    context = get_canonical_market_context(st.session_state)
+    parity_state = _parity_page_state(st.session_state)
     base_summary = context["summary_1y"]["base"]
     default_spot = float(base_summary["spot_fx"])
     default_usd = _from_decimal(float(base_summary["usd_rate"]))
@@ -110,11 +110,11 @@ def render_page() -> None:
     button = getattr(st, "button", None)
     st.subheader("Canonical inputs")
     if callable(button) and button("Worked example (HUF/USD)"):
-        st.session_state["parity_spot"] = WORKED_EXAMPLE["spot"]
-        st.session_state["parity_forward"] = WORKED_EXAMPLE["observed_forward"]
-        st.session_state["parity_usd_rate_pct"] = WORKED_EXAMPLE["usd_rate"]
-        st.session_state["parity_huf_rate_pct"] = WORKED_EXAMPLE["huf_rate"]
-        st.session_state["parity_tenor"] = WORKED_EXAMPLE["tenor"]
+        parity_state["spot"] = WORKED_EXAMPLE["spot"]
+        parity_state["forward"] = WORKED_EXAMPLE["observed_forward"]
+        parity_state["usd_rate_pct"] = WORKED_EXAMPLE["usd_rate"]
+        parity_state["huf_rate_pct"] = WORKED_EXAMPLE["huf_rate"]
+        parity_state["tenor"] = WORKED_EXAMPLE["tenor"]
 
     left, right = st.columns(2)
     with left:
@@ -122,43 +122,43 @@ def render_page() -> None:
             st.number_input(
                 "Spot (HUF per USD)",
                 min_value=0.0001,
-                value=float(st.session_state.get("parity_spot", default_spot)),
+                value=float(parity_state.get("spot", default_spot)),
                 step=0.01,
-                key="parity_spot",
             )
         )
+        parity_state["spot"] = spot
         observed_forward = float(
             st.number_input(
                 "Observed forward (HUF per USD)",
                 min_value=0.0001,
-                value=float(st.session_state.get("parity_forward", default_spot)),
+                value=float(parity_state.get("forward", default_spot)),
                 step=0.01,
-                key="parity_forward",
             )
         )
+        parity_state["forward"] = observed_forward
         tenor_label = st.selectbox(
             "Tenor",
             TENOR_LADDER,
-            index=TENOR_LADDER.index(st.session_state.get("parity_tenor", "1Y")),
-            key="parity_tenor",
+            index=TENOR_LADDER.index(parity_state.get("tenor", "1Y")),
         )
+        parity_state["tenor"] = tenor_label
     with right:
         usd_rate_pct = float(
             st.number_input(
                 "USD rate (%)",
-                value=float(st.session_state.get("parity_usd_rate_pct", default_usd)),
+                value=float(parity_state.get("usd_rate_pct", default_usd)),
                 step=0.05,
-                key="parity_usd_rate_pct",
             )
         )
+        parity_state["usd_rate_pct"] = usd_rate_pct
         huf_rate_pct = float(
             st.number_input(
                 "HUF rate (%)",
-                value=float(st.session_state.get("parity_huf_rate_pct", default_huf)),
+                value=float(parity_state.get("huf_rate_pct", default_huf)),
                 step=0.05,
-                key="parity_huf_rate_pct",
             )
         )
+        parity_state["huf_rate_pct"] = huf_rate_pct
 
     usd_rate = usd_rate_pct / 100.0
     huf_rate = huf_rate_pct / 100.0

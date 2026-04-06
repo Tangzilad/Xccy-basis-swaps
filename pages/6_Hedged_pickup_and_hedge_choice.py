@@ -28,10 +28,6 @@ REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
 )
 
 
-def _get_market_state(session_state: dict) -> object:
-    return session_state.get("market_state")
-
-
 def _build_payload(session_state: dict) -> dict[str, object]:
     context = get_canonical_market_context(session_state)
     base_summary = context["summary_1y"]["base"]

@@ -104,6 +104,7 @@ def render_page() -> None:
     st.session_state.suggested_page = "8. Consolidated dashboard"
 
     context = get_canonical_market_context(st.session_state)
+    base_summary = context["summary_1y"]["base"]
     base_snapshot = context["base_snapshot"]
     stressed_snapshot = context["stressed_snapshot"]
     bm = _snapshot_metrics(base_snapshot)
@@ -113,6 +114,11 @@ def render_page() -> None:
     st.caption(
         "All key outputs from every lesson in one view. "
         "Use the sidebar to change scenarios and see how metrics flow through."
+    )
+    st.caption(
+        f"Canonical 1Y anchor: spot={base_summary['spot_fx']:.2f}, "
+        f"USD={base_summary['usd_rate']:.2%}, HUF={base_summary['huf_rate']:.2%}, "
+        f"basis={base_summary['basis_bps']:.1f} bps."
     )
 
     # ---- Section 1: Market State ----

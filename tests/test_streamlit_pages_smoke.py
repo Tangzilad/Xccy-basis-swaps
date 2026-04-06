@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib
 import sys
 import types
+from pathlib import Path
 
 import pytest
 
@@ -40,11 +41,6 @@ def _build_streamlit_stub() -> types.ModuleType:
     stub.session_state = _SessionState(
         {
             "mode": "Learning",
-            "base_rate": 4.25,
-            "quote_rate": 5.0,
-            "spot_fx": 1.08,
-            "cross_currency_basis_bps": -22,
-            "vol_regime": "Normal",
         }
     )
     stub.markdown_calls = []
@@ -143,16 +139,6 @@ def _build_ui_shell_stub() -> types.ModuleType:
 
 def _build_shared_page_helpers_stub() -> types.ModuleType:
     helpers = types.ModuleType("shared_page_helpers")
-    helpers.get_market_params = lambda ss: {
-        "spot_fx": float(ss.get("spot_fx", 365.0)),
-        "usd_rate": float(ss.get("base_rate", 4.25)) / 100.0,
-        "huf_rate": float(ss.get("quote_rate", 5.0)) / 100.0,
-        "basis_bps": float(ss.get("cross_currency_basis_bps", -22.0)),
-    }
-    helpers.get_funding_params = lambda ss: {
-        **helpers.get_market_params(ss),
-        "extra_spread_bps": 12.0,
-    }
     helpers.as_decimal = lambda v: v / 100.0 if v > 1 else v
     helpers.from_decimal = lambda v: v * 100.0 if v < 1 else v
     helpers.render_learning_objectives = lambda *a, **k: None
@@ -187,9 +173,27 @@ def test_each_page_imports_and_renders_with_mocked_market_state(monkeypatch, mod
 
     importlib.import_module(module_name)
 
-    assert "cross_currency_basis_bps" in stub.session_state
     assert "suggested_page" in stub.session_state
     assert stub.page_config_calls == 1
+
+
+@pytest.mark.parametrize(
+    "page_path",
+    [
+        "pages/2_XCCY_mechanics.py",
+        "pages/3_Parity_lab.py",
+        "pages/4_Market_basis_and_funding_transformation.py",
+        "pages/5_Persistence_XVA_arbitrage_limits.py",
+        "pages/6_Hedged_pickup_and_hedge_choice.py",
+        "pages/7_HUF_USD_strategy_and_stress_lab.py",
+        "pages/8_Consolidated_dashboard.py",
+    ],
+)
+def test_lesson_pages_read_summary_1y_and_do_not_reference_legacy_shallow_keys(page_path):
+    source = Path(page_path).read_text()
+    assert "summary_1y" in source
+    for forbidden in ("base_rate", "quote_rate", "cross_currency_basis_bps", "spot_fx"):
+        assert f'session_state.get("{forbidden}"' not in source
 
 
 def test_calculation_panel_sections_present(monkeypatch):
