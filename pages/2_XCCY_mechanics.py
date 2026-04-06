@@ -6,7 +6,12 @@ from src.state.session_access import get_canonical_market_context
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import (
+        CalculationWindow,
+        SignConventionContext,
+        render_calculation_windows,
+        render_shared_sign_convention,
+    )
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="2. XCCY mechanics", page_icon="📘", layout="wide")
@@ -34,11 +39,18 @@ def render_page() -> None:
     st.dataframe(timeline, use_container_width=True)
     st.write("Mechanics are shown from the USD-receiver / HUF-payer perspective.")
     learning_hint("Positive cashflows are received by the USD leg receiver.")
+    sign_context = SignConventionContext(
+        quote_convention="HUF per USD",
+        perspective="USD-receiver / HUF-payer swap leg direction.",
+        positive_interpretation="Positive metric implies higher USD-side synthetic cost or inflow for the stated leg.",
+        negative_interpretation="Negative metric implies lower USD-side synthetic cost or outflow for the stated leg.",
+    )
+    render_shared_sign_convention(sign_context)
     render_calculation_windows([
         CalculationWindow("Synthetic USD (no basis)", r"r=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}", f"$S={spot:.4f}, F={forward:.4f}, r_{{HUF}}={huf_rate:.4%}$", ("Positive rate = higher funding cost.",), result=f"{out['synthetic_usd_rate_no_basis']:.4%}"),
         CalculationWindow("Synthetic USD (with basis)", r"r=\frac{\frac{1+(r_{HUF}+b)T}{F/S}-1}{T}", f"$b={basis:.4%}$", ("Positive basis increases HUF coupon.",), result=f"{out['synthetic_usd_rate_with_basis']:.4%}"),
         CalculationWindow("Basis drag", r"(r_{with}-r_{no})\times 10{,}000", f"$({out['synthetic_usd_rate_with_basis']:.6f}-{out['synthetic_usd_rate_no_basis']:.6f})\times10,000$", ("Positive drag means worse synthetic funding.",), result=f"{out['basis_drag_bp']:.2f} bp"),
-    ])
+    ], sign_convention=sign_context)
 
 
 if __name__ == "__main__":

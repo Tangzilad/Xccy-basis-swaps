@@ -11,7 +11,12 @@ from src.analytics.funding import (
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import (
+        CalculationWindow,
+        SignConventionContext,
+        render_calculation_windows,
+        render_shared_sign_convention,
+    )
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="4. Market basis and funding transformation", page_icon="📘", layout="wide")
@@ -132,11 +137,18 @@ def render_page() -> None:
     )
     st.write("Funding transformation compares domestic route versus foreign-plus-basis route.")
     learning_hint("Positive gap means synthetic route is less economical.")
+    sign_context = SignConventionContext(
+        quote_convention="HUF per USD",
+        perspective="Funding decision lens (issuer/investor/treasury) for HUF and USD issuance directions.",
+        positive_interpretation="Positive delta/gap means synthetic funding is more expensive than direct funding.",
+        negative_interpretation="Negative delta/gap means synthetic funding is cheaper than direct funding.",
+    )
+    render_shared_sign_convention(sign_context)
     render_calculation_windows([
         CalculationWindow("Domestic all-in", r"r_{dom}=r_{domcurve}+s_{extra}", f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$", ("Costs add positively.",), result=f"{one['HUF direct']:.4%}"),
         CalculationWindow("Synthetic all-in", r"r_{syn}=r_{forcurve}+b+s_{extra}", f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$", ("Positive basis raises synthetic cost.",), result=f"{one['HUF synthetic']:.4%}"),
         CalculationWindow("Cross-market gap", r"\Delta r=r_{syn}-r_{dom}", f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$", ("Positive gap: synthetic is worse.",), result=f"{one['HUF delta'] * 10000:.2f} bps"),
-    ])
+    ], sign_convention=sign_context)
 
 
 if __name__ == "__main__":

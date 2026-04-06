@@ -19,6 +19,20 @@ class CalculationWindow:
     assumptions: Sequence[str] = field(default_factory=tuple)
     result: str = ""
     expanded: bool = False
+    quote_convention: str = ""
+    perspective: str = ""
+    positive_interpretation: str = ""
+    negative_interpretation: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class SignConventionContext:
+    """Shared sign-convention details applied to a page's calculation windows."""
+
+    quote_convention: str
+    perspective: str
+    positive_interpretation: str
+    negative_interpretation: str
 
 
 DEFAULT_CALCULATION_TITLES: tuple[str, ...] = (
@@ -76,17 +90,61 @@ def render_calculation_window(window: CalculationWindow) -> None:
         st.markdown("**Result**")
         st.success(window.result)
 
+        st.markdown("**Quote convention and sign interpretation**")
+        st.markdown(f"- Quote convention: {window.quote_convention or 'Not specified'}")
+        st.markdown(f"- Perspective: {window.perspective or 'Not specified'}")
+        st.markdown(f"- Positive result: {window.positive_interpretation or 'Not specified'}")
+        st.markdown(f"- Negative result: {window.negative_interpretation or 'Not specified'}")
 
-def render_calculation_windows(windows: Iterable[CalculationWindow]) -> None:
+
+def render_shared_sign_convention(context: SignConventionContext) -> None:
+    """Render a shared sign-convention panel for a page."""
+    st.info(
+        "\n".join(
+            [
+                "**Shared sign convention (applies to all calculation windows below)**",
+                f"- Quote convention: {context.quote_convention}",
+                f"- Perspective: {context.perspective}",
+                f"- Positive result: {context.positive_interpretation}",
+                f"- Negative result: {context.negative_interpretation}",
+            ]
+        )
+    )
+
+
+def _apply_sign_context(window: CalculationWindow, context: SignConventionContext | None) -> CalculationWindow:
+    if context is None:
+        return window
+    return CalculationWindow(
+        title=window.title,
+        formula=window.formula,
+        substituted_values=window.substituted_values,
+        sign_convention_notes=tuple(window.sign_convention_notes),
+        assumptions=tuple(window.assumptions),
+        result=window.result,
+        expanded=window.expanded,
+        quote_convention=window.quote_convention or context.quote_convention,
+        perspective=window.perspective or context.perspective,
+        positive_interpretation=window.positive_interpretation or context.positive_interpretation,
+        negative_interpretation=window.negative_interpretation or context.negative_interpretation,
+    )
+
+
+def render_calculation_windows(
+    windows: Iterable[CalculationWindow],
+    *,
+    sign_convention: SignConventionContext | None = None,
+) -> None:
     """Render a list of collapsible calculation windows."""
     for window in windows:
-        render_calculation_window(window)
+        render_calculation_window(_apply_sign_context(window, sign_convention))
 
 
 def render_required_calculation_windows(
     calculations: dict[str, CalculationWindow],
     *,
     default_expanded: bool = False,
+    sign_convention: SignConventionContext | None = None,
 ) -> None:
     """Render all required windows in a consistent order.
 
@@ -124,4 +182,4 @@ def render_required_calculation_windows(
                 )
             )
 
-    render_calculation_windows(windows)
+    render_calculation_windows(windows, sign_convention=sign_convention)

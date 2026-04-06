@@ -16,7 +16,12 @@ from src.state.session_access import get_canonical_market_context
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import (
+        CalculationWindow,
+        SignConventionContext,
+        render_calculation_windows,
+        render_shared_sign_convention,
+    )
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="6. Hedged pickup and hedge choice", page_icon="📘", layout="wide")
@@ -121,7 +126,12 @@ def render_page() -> None:
 
 def render_page() -> None:
     import streamlit as st
-    from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+    from streamlit_calc_helpers import (
+        CalculationWindow,
+        SignConventionContext,
+        render_calculation_windows,
+        render_shared_sign_convention,
+    )
     from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="6. Hedged pickup and hedge choice", page_icon="📘", layout="wide")
@@ -163,6 +173,13 @@ def render_page() -> None:
 
     base = payload["base"]
     round_trip = payload["round_trip"]
+    sign_context = SignConventionContext(
+        quote_convention="HUF per USD",
+        perspective="Investor comparing hedged pickup and hedge implementation (matched vs rolling) for HUF/USD carry.",
+        positive_interpretation="Positive pickup/benefit means attractive net economics under the selected hedge method.",
+        negative_interpretation="Negative pickup/benefit means hedge costs and frictions dominate carry.",
+    )
+    render_shared_sign_convention(sign_context)
     render_calculation_windows(
         [
             CalculationWindow(
@@ -218,7 +235,8 @@ def render_page() -> None:
                     f" | preferred={base['preferred_hedge']}"
                 ),
             ),
-        ]
+        ],
+        sign_convention=sign_context,
     )
 
 
