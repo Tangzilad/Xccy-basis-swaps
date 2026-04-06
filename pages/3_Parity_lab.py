@@ -22,35 +22,6 @@ def _from_decimal(v: float) -> float:
     return v * 100.0 if v < 1 else v
 
 
-def _get_market_state(session_state: dict) -> dict:
-    ms = session_state.get("market_state")
-    if isinstance(ms, dict) and "base_snapshot" in ms:
-        summary = get_canonical_market_context(session_state)["summary_1y"]["base"]
-        return {
-            "spot_fx": float(summary["spot_fx"]),
-            "usd_rate": float(summary["usd_rate"]),
-            "huf_rate": float(summary["huf_rate"]),
-            "basis_bps": float(summary["basis_bps"]),
-        }
-    if isinstance(ms, dict):
-        return ms
-    if ms is not None:
-        return {
-            "spot_fx": float(getattr(ms, "spot_fx", session_state.get("spot_fx", 365.0))),
-            "usd_rate": float(ms.huf_usd_curves["usd"].iloc[0]["usd_zero_rate"]),
-            "huf_rate": float(ms.huf_usd_curves["huf"].iloc[0]["huf_zero_rate"]),
-            "basis_bps": float(ms.basis_curve.iloc[0]["basis_bps"]),
-        }
-    fallback = {
-        "spot_fx": float(session_state.get("spot_fx", 365.0)),
-        "usd_rate": _as_decimal(float(session_state.get("base_rate", 4.25))),
-        "huf_rate": _as_decimal(float(session_state.get("quote_rate", 5.0))),
-        "basis_bps": float(session_state.get("cross_currency_basis_bps", -22.0)),
-    }
-    session_state["market_state"] = fallback
-    return fallback
-
-
 def render_page() -> None:
     import streamlit as st
     from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
@@ -61,11 +32,18 @@ def render_page() -> None:
     st.session_state.suggested_page = LEARNING_PATH[2]
 
     st.title("3. Parity lab")
-    st.caption("Inputs and outputs follow HUF per USD FX quote convention.")
-    market_state = _get_market_state(st.session_state)
-    default_spot = float(market_state["spot_fx"])
-    default_usd = _from_decimal(float(market_state["usd_rate"]))
-    default_huf = _from_decimal(float(market_state["huf_rate"]))
+    a, b, c = st.columns(3)
+    a.metric("Observed 1Y", f"{one['observed_forward']:.4f}")
+    b.metric("Fair 1Y", f"{one['fair_forward_no_basis']:.4f}")
+    c.metric("Raw wedge", f"{one['raw_basis_wedge_bp']:.2f} bps")
+    st.line_chart({"tenor": [r["tenor"] for r in rows], "wedge": [r["raw_basis_wedge_bp"] for r in rows]}, x="tenor")
+    st.dataframe(rows, use_container_width=True)
+    st.write("Observed forwards are benchmarked versus no-basis CIP fair values.")
+    context = get_canonical_market_context(st.session_state)
+    base_summary = context["summary_1y"]["base"]
+    default_spot = float(base_summary["spot_fx"])
+    default_usd = _from_decimal(float(base_summary["usd_rate"]))
+    default_huf = _from_decimal(float(base_summary["huf_rate"]))
 
     button = getattr(st, "button", None)
     st.subheader("Canonical inputs")
