@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from src.analytics.parity import fair_value_comparison, implied_huf_rate_from_spot_forward, implied_usd_rate_from_spot_forward
 from src.state.session_access import get_canonical_market_context
 from src.analytics.parity import parity_decomposition, tenor_ladder_decomposition, tenor_to_year_fraction
 
@@ -32,18 +31,6 @@ def render_page() -> None:
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[2]
 
-    summary = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
-    spot, usd, huf = float(summary["spot_fx"]), float(summary["usd_rate"]), float(summary["huf_rate"])
-    basis = float(summary["basis_bps"]) / 10_000.0
-
-    rows = []
-    for t in [0.25, 0.5, 1.0, 2.0]:
-        obs = spot * (1 + (huf + basis) * t) / (1 + usd * t)
-        rows.append({"tenor": t, **fair_value_comparison(spot, obs, usd, huf, t)})
-    one = next(r for r in rows if r["tenor"] == 1.0)
-    ih = implied_huf_rate_from_spot_forward(spot, one["observed_forward"], usd, 1.0)
-    iu = implied_usd_rate_from_spot_forward(spot, one["observed_forward"], huf, 1.0)
-
     st.title("3. Parity lab")
     a, b, c = st.columns(3)
     a.metric("Observed 1Y", f"{one['observed_forward']:.4f}")
@@ -58,10 +45,8 @@ def render_page() -> None:
     default_usd = _from_decimal(float(base_summary["usd_rate"]))
     default_huf = _from_decimal(float(base_summary["huf_rate"]))
 
-    st.title("3. Parity lab")
-    st.caption("Inputs and outputs follow HUF per USD FX quote convention.")
-
     button = getattr(st, "button", None)
+    st.subheader("Canonical inputs")
     if callable(button) and button("Worked example (HUF/USD)"):
         st.session_state["parity_spot"] = WORKED_EXAMPLE["spot"]
         st.session_state["parity_forward"] = WORKED_EXAMPLE["observed_forward"]
@@ -126,6 +111,7 @@ def render_page() -> None:
         year_fraction=tenor_years,
     )
 
+    st.subheader("Decomposition outputs")
     c1, c2, c3 = st.columns(3)
     c1.metric("CIP-implied forward", f"{breakdown['cip_implied_forward']:.4f}")
     c2.metric("Implied HUF rate", f"{breakdown['implied_huf_rate']:.4%}")
@@ -136,12 +122,13 @@ def render_page() -> None:
     c5.metric("Relative forward diff", f"{breakdown['forward_relative_bp']:.2f} bp")
     c6.metric("Raw basis wedge", f"{breakdown['raw_basis_wedge_bp']:.2f} bp")
 
-    st.markdown(
+    sign_convention_text = (
         "**Sign convention (HUF per USD):** "
         "A **positive** raw basis wedge means the observed forward is high vs no-basis CIP, "
         "so implied HUF funding is richer (worse for synthetic USD borrowing via HUF). "
         "A **negative** wedge means observed forward is low vs CIP and synthetic USD funding is cheaper."
     )
+    st.markdown(sign_convention_text)
 
     ladder = tenor_ladder_decomposition(
         spot_huf_per_usd=spot,
@@ -250,6 +237,7 @@ def render_page() -> None:
             result="N/A on this page",
         ),
     }
+    st.subheader("Calculation windows")
     render_required_calculation_windows(calc_windows, default_expanded=False)
 
 
