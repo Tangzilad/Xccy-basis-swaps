@@ -30,6 +30,19 @@ def _recommendation_state(delta_bp: float, friction_threshold_bp: float) -> tupl
     return "Direct route preferred", "⚠️"
 
 
+def _normalize_role_from_state(raw_role: object) -> str:
+    role = str(raw_role or "issuer").strip().lower()
+    return role if role in {"issuer", "investor", "treasury"} else "issuer"
+
+
+def _recommendation_state(delta_bp: float, friction_bp: float) -> tuple[str, str]:
+    if delta_bp > friction_bp:
+        return "Direct route preferred", "🟥"
+    if delta_bp < -friction_bp:
+        return "Synthetic route preferred", "🟩"
+    return "Indifferent within friction band", "🟨"
+
+
 def render_page() -> None:
     import streamlit as st
     from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
@@ -38,6 +51,23 @@ def render_page() -> None:
     st.set_page_config(page_title="4. Market basis and funding transformation", page_icon="📘", layout="wide")
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[3]
+    st.title("4. Market basis and funding transformation")
+    render_pedagogical_scaffold(
+        st,
+        page_number=4,
+        learning_path=LEARNING_PATH,
+        quantitative_outputs=(
+            "HUF direct vs synthetic all-in rates",
+            "USD direct vs synthetic all-in rates",
+            "Cross-market deltas by tenor",
+            "1Y recommendation state versus friction threshold",
+        ),
+        derivation_items=(
+            ("Domestic all-in", "Add extra spread to the domestic curve rate for direct issuance cost."),
+            ("Synthetic all-in", "Add basis and extra spread to foreign curve rate for swapped issuance cost."),
+            ("Cross-market delta", "Subtract direct from synthetic all-in and convert to bps for route comparison."),
+        ),
+    )
 
     market_context = get_canonical_market_context(st.session_state)
     base_snapshot = market_context["base_snapshot"]
@@ -88,7 +118,6 @@ def render_page() -> None:
         swapped_rate=float(one["USD synthetic"]),
     )
 
-    st.title("4. Market basis and funding transformation")
     selected_role = _normalize_role_from_state(canonical_state.get("user_role"))
     role = st.selectbox(
         "Role lens",
@@ -129,24 +158,26 @@ def render_page() -> None:
     usd_state, usd_icon = _recommendation_state(one["USD delta"] * 10_000.0, friction_bps_1y)
     st.subheader("Recommendation panel (1Y)")
     r1, r2 = st.columns(2)
-    r1.markdown(
-        "\n".join(
-            [
-                f"**HUF recommendation:** {huf_icon} **{huf_state}**",
-                f"- Delta: `{one['HUF delta'] * 10000:.2f} bps`",
-                f"- Choice helper: `{huf_choice.preferred_route}`",
-            ]
+    with r1:
+        st.markdown(
+            "\n".join(
+                [
+                    f"**HUF recommendation:** {huf_icon} **{huf_state}**",
+                    f"- Delta: `{one['HUF delta'] * 10000:.2f} bps`",
+                    f"- Choice helper: `{huf_choice.preferred_route}`",
+                ]
+            )
         )
-    )
-    r2.markdown(
-        "\n".join(
-            [
-                f"**USD recommendation:** {usd_icon} **{usd_state}**",
-                f"- Delta: `{one['USD delta'] * 10000:.2f} bps`",
-                f"- Choice helper: `{usd_choice.preferred_route}`",
-            ]
+    with r2:
+        st.markdown(
+            "\n".join(
+                [
+                    f"**USD recommendation:** {usd_icon} **{usd_state}**",
+                    f"- Delta: `{one['USD delta'] * 10000:.2f} bps`",
+                    f"- Choice helper: `{usd_choice.preferred_route}`",
+                ]
+            )
         )
-    )
     st.caption(
         f"Friction sensitivity threshold uses 1Y funding friction = {friction_bps_1y:.2f} bps from canonical market context."
     )

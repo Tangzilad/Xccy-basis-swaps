@@ -6,6 +6,7 @@ from src.analytics.funding import all_in_funding_decomposition
 from src.analytics.hedging import hedged_pickup_decomposition_bp, matched_vs_rolling_hedge_economics_bp
 from src.analytics.parity import fair_value_comparison
 from src.analytics.xccy_swap import synthetic_funding_cost_outputs
+from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
 
 
@@ -104,6 +105,23 @@ def render_page() -> None:
     st.set_page_config(page_title="7. HUF/USD strategy and stress lab", page_icon="📘", layout="wide")
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[6]
+    st.title("7. HUF/USD strategy and stress lab")
+    render_pedagogical_scaffold(
+        st,
+        page_number=7,
+        learning_path=LEARNING_PATH,
+        quantitative_outputs=(
+            "Base vs stressed CIP wedge",
+            "Base vs stressed funding gap and friction-adjusted edge",
+            "Base vs stressed hedged pickup",
+            "Preferred hedge under stress",
+        ),
+        derivation_items=(
+            ("State comparison construction", "Compute the same metric stack on base and stressed snapshots."),
+            ("Stress delta extraction", "Report stressed minus base differences for decision variables."),
+            ("Decision framing", "Use edge, pickup, and hedge preference jointly before committing capital."),
+        ),
+    )
 
     context = get_canonical_market_context(st.session_state)
     base_snapshot = context["base_snapshot"]
@@ -131,7 +149,6 @@ def render_page() -> None:
         },
     ]
 
-    st.title("7. HUF/USD strategy and stress lab")
     st.caption(f"Scenario: {context['state'].get('scenario', 'none')}")
     a, b, c = st.columns(3)
     a.metric("Δ CIP wedge", f"{sm['parity']['raw_basis_wedge_bp'] - bm['parity']['raw_basis_wedge_bp']:.2f} bps")

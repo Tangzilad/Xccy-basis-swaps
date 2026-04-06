@@ -11,6 +11,7 @@ from src.analytics.hedging import (
     matched_vs_rolling_hedge_economics_bp,
     roll_cost_and_risk_proxy_bp,
 )
+from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
 
 
@@ -57,13 +58,13 @@ def _build_payload(session_state: dict) -> dict[str, object]:
         hedge_choice_payload = matched_vs_rolling_hedge_economics_bp(
             matched_hedge_cost_bp=hedge_cost_bp + 12.0,
             expected_rolling_cost_bp=hedge_cost_bp,
-            roll_risk_proxy_bp=roll_payload["roll_risk_proxy_bp"],
+            roll_risk_proxy_bp=float(roll_payload["roll_risk_proxy_bp"]),
             risk_aversion_multiplier=0.6,
         )
         decomposition = hedged_pickup_decomposition_bp(
             gross_spread_pickup_bp=gross_pickup_bp,
             hedge_cost_bp=hedge_cost_bp,
-            basis_drag_bp=abs(basis),
+            basis_drag_bp=abs(basis_bps),
             extra_friction_bp=8.0,
         )
         rows.append(
@@ -79,17 +80,13 @@ def _build_payload(session_state: dict) -> dict[str, object]:
     base = next(row for row in rows if row["hedge_cost"] == 35.0)
     return {
         "spot": spot,
-        "usd": usd,
-        "huf": huf,
-        "basis": basis,
         "fwd_1y": fwd_1y,
-        "nominal_diff_bp": nominal_diff_bp,
-        "simple_cf_payload": simple_cf_payload,
+        "basis_bps": basis_bps,
         "simple_cf": simple_cf,
-        "curve_cf_payload": curve_cf_payload,
         "curve_cf": curve_cf,
-        "round_trip": round_trip,
+        "nominal_diff_bp": nominal_diff_bp,
         "gross_pickup_bp": gross_pickup_bp,
+        "round_trip": round_trip,
         "rows": rows,
         "base": base,
     }
@@ -107,12 +104,32 @@ def render_page() -> None:
     payload = _build_payload(st.session_state)
 
     st.title("6. Hedged pickup and hedge choice")
+    render_pedagogical_scaffold(
+        st,
+        page_number=6,
+        learning_path=LEARNING_PATH,
+        quantitative_outputs=(
+            "Simple and curve-aware conversion factors",
+            "Gross spread translated into hedged quote space",
+            "Net hedged pickup across hedge-cost assumptions",
+            "Matched-vs-rolling preferred hedge",
+        ),
+        derivation_items=(
+            ("Conversion-factor construction", "Compute F/S simple CF, then annuity-weighted curve-aware CF."),
+            ("Pickup decomposition", "Net pickup = gross pickup - hedge cost - basis drag - extra frictions."),
+            ("Hedge-choice rule", "Compare matched cost with risk-adjusted rolling cost: C_r + λ·σ_roll."),
+        ),
+    )
+
+    payload = _build_payload(st.session_state)
+    base = payload["base"]
+
     a, b, c, d = st.columns(4)
     a.metric("Simple CF (F/S)", f"{payload['simple_cf']:.6f}")
     b.metric("Curve-aware CF", f"{payload['curve_cf']:.6f}")
     c.metric("Converted gross", f"{payload['gross_pickup_bp']:.2f} bps")
-    d.metric("Net pickup", f"{payload['base']['pickup']:.2f} bps")
-    st.caption(f"Preferred hedge method (base case): **{str(payload['base']['preferred_hedge']).title()}**")
+    d.metric("Net pickup", f"{base['pickup']:.2f} bps")
+    st.caption(f"Preferred hedge method (base case): **{str(base['preferred_hedge']).title()}**")
 
     st.line_chart(
         {
@@ -123,21 +140,8 @@ def render_page() -> None:
         x="hedge_cost",
     )
     st.dataframe(payload["rows"], use_container_width=True)
-    st.write("Hedge choice is based on risk-adjusted pickup rather than carry alone.")
-    st.markdown(
-        """
-        **Why CF is not “just FX”:** the conversion factor is the map from one quote space (HUF-bp) into another
-        (USD-bp). Spot alone does not control that map—forward points and curve weights matter, which is why the
-        curve-aware CF can differ from the simple (F/S) ratio.
+    learning_hint("Rolling hedges can lose after volatility-scaled roll-risk penalties.")
 
-        **Why hedged pickup differs from nominal yield differential:** the nominal HUF-USD differential is only a
-        starting point. Realized hedged pickup subtracts hedge implementation cost, basis drag, and frictions.
-        Therefore “higher nominal yield” can still produce weak or negative net pickup after hedging.
-        """
-    )
-    learning_hint("Rolling hedges can lose after volatility-scaled roll risk penalties.")
-
-    base = payload["base"]
     round_trip = payload["round_trip"]
     render_calculation_windows(
         [
