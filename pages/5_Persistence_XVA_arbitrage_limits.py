@@ -2,6 +2,31 @@ from __future__ import annotations
 
 from src.analytics.frictions import friction_adjusted_arbitrage_band_bp
 from src.state.session_access import get_canonical_market_context
+import pandas as pd
+
+from src.analytics.frictions import (
+    friction_adjusted_arbitrage_band_bp,
+    friction_components_bp,
+)
+
+
+def _get_market_state(session_state: dict) -> dict:
+    ms = session_state.get("market_state")
+    if isinstance(ms, dict):
+        return ms
+    ms = {
+        "basis_bps": -22.0,
+        "capital_charge_bp": 9.0,
+        "funding_spread_bp": 6.0,
+        "cva_proxy_bp": 4.0,
+        "fva_proxy_bp": 3.0,
+        "clearing_friction_bp": 2.0,
+        "liquidity_repo_friction_bp": 5.0,
+        "counterparty_quality_multiplier": 1.0,
+        "capacity_multiplier": 1.0,
+    }
+    session_state["market_state"] = ms
+    return ms
 
 
 def render_page() -> None:
@@ -37,6 +62,7 @@ def render_page() -> None:
             }
         )
     base = next(r for r in rows if r["capacity"] == 1.0)
+    m = _get_market_state(st.session_state)
 
     st.title("5. Persistence / XVA / arbitrage limits")
     a, b, c = st.columns(3)
@@ -52,3 +78,9 @@ def render_page() -> None:
         CalculationWindow("Net edge", r"\text{Raw edge}-\text{Friction}", f"${base['raw_edge_bp']:.2f}-{base['total_friction_bp']:.2f}$", ("Positive net edge implies residual arbitrage value.",), result=f"{base['net_edge_bp']:.2f} bps"),
         CalculationWindow("Actionability", r"|\text{Raw edge}|>\text{Friction}", f"$|{base['raw_edge_bp']:.2f}|>{base['total_friction_bp']:.2f}$", ("Must clear band to trade.",), result="Actionable" if base["is_actionable"] else "Not actionable"),
     ])
+
+
+if __name__ == "__main__":
+    render_page()
+else:
+    render_page()

@@ -177,3 +177,25 @@ def translate_spread_inverse_bp(
 ) -> float:
     """Invert spread translation using either a raw factor or a conversion payload."""
     return translated_spread_bp / _extract_conversion_factor(conversion_factor)
+
+
+def spread_translation_round_trip_bp(
+    huf_spread_bp: float,
+    conversion_factor: float | dict[str, Any],
+    *,
+    tolerance_bp: float = 1e-9,
+) -> dict[str, float | bool]:
+    """Run HUF-bp -> USD-bp -> HUF-bp round-trip and validate tolerance."""
+    if tolerance_bp < 0:
+        raise ValueError("tolerance_bp must be non-negative")
+    usd_spread_bp = translate_spread_bp(huf_spread_bp, conversion_factor)
+    recovered_huf_spread_bp = translate_spread_inverse_bp(usd_spread_bp, conversion_factor)
+    residual_bp = recovered_huf_spread_bp - huf_spread_bp
+    return {
+        "huf_bp_in": huf_spread_bp,
+        "usd_bp_translated": usd_spread_bp,
+        "huf_bp_round_trip": recovered_huf_spread_bp,
+        "round_trip_residual_bp": residual_bp,
+        "round_trip_within_tolerance": abs(residual_bp) <= tolerance_bp,
+        "tolerance_bp": tolerance_bp,
+    }

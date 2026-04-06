@@ -93,3 +93,9 @@ def render_page() -> None:
         CalculationWindow("Stressed net edge", r"\text{Raw edge}-\text{Friction}", f"${sm['frictions']['raw_edge_bp']:.2f}-{sm['frictions']['total_friction_bp']:.2f}$", ("Costs reduce tradeability.",), result=f"{sm['frictions']['net_edge_bp']:.2f} bps"),
         CalculationWindow("Stressed hedged pickup", r"\text{Gross}-\text{hedge}-\text{basis}-\text{extra}", f"$CF={sm['conversion_factor']:.6f}, basis={abs(sm['basis_bps']):.2f}$", ("Positive pickup remains attractive.",), result=f"{sm['pickup_bp']:.2f} bps"),
     ])
+
+
+if __name__ == "__main__":
+    render_page()
+else:
+    render_page()
