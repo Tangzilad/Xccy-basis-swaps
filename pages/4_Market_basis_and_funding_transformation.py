@@ -152,6 +152,50 @@ def render_page() -> None:
     )
     st.write("Funding transformation compares domestic route versus foreign-plus-basis route.")
     learning_hint("Positive gap means synthetic route is less economical.")
+    render_calculation_windows([
+        CalculationWindow(
+            title="Domestic all-in",
+            concept_meaning="Direct domestic funding rate after extra spread adjustments.",
+            why_it_matters="Baseline comparator for synthetic funding alternatives.",
+            formula=r"r_{dom}=r_{domcurve}+s_{extra}",
+            methodology_rationale="Add implementation spread to underlying domestic curve rate.",
+            inputs_used="Domestic curve rate and extra spread in annualized percent.",
+            substituted_values=f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$",
+            derivation_steps=("Read direct curve rate.", "Add extra spread cost.",),
+            assumptions=("Spreads add linearly.",),
+            interpretation="Higher value means costlier direct HUF funding.",
+            common_misunderstandings=("Omitting extra spread understates true executable cost.",),
+            result=f"{one['HUF direct']:.4%}",
+        ),
+        CalculationWindow(
+            title="Synthetic all-in",
+            concept_meaning="Synthetic domestic funding from foreign curve plus basis and spread.",
+            why_it_matters="Shows the executable synthetic route cost.",
+            formula=r"r_{syn}=r_{forcurve}+b+s_{extra}",
+            methodology_rationale="Translate foreign funding route into domestic all-in cost.",
+            inputs_used="Foreign curve rate, basis, and extra spread.",
+            substituted_values=f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$",
+            derivation_steps=("Start from foreign direct rate.", "Add basis transfer.", "Add extra spread.",),
+            assumptions=("Basis enters additively in annualized terms.",),
+            interpretation="Positive basis lifts synthetic cost in this convention.",
+            common_misunderstandings=("Treating basis as optional when comparing executable routes.",),
+            result=f"{one['HUF synthetic']:.4%}",
+        ),
+        CalculationWindow(
+            title="Cross-market gap",
+            concept_meaning="Relative economics of synthetic versus domestic funding.",
+            why_it_matters="Primary decision metric for route preference.",
+            formula=r"\Delta r=r_{syn}-r_{dom}",
+            methodology_rationale="Subtract direct domestic cost from synthetic all-in cost.",
+            inputs_used="Synthetic and domestic all-in annualized rates.",
+            substituted_values=f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$",
+            derivation_steps=("Compute synthetic rate.", "Compute domestic rate.", "Take difference and convert to bps.",),
+            assumptions=("Both rates are tenor-aligned and annualized comparably.",),
+            interpretation="Positive gap means synthetic is less economical.",
+            common_misunderstandings=("Reading absolute levels without comparing the spread.",),
+            result=f"{one['HUF delta'] * 10000:.2f} bps",
+        ),
+    ])
     render_calculation_windows(
         [
             CalculationWindow(
