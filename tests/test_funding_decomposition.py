@@ -111,3 +111,16 @@ def test_worked_example_huf_reverse_rule_sign_and_magnitude() -> None:
     assert huf.synthetic_spread_bp > huf.direct_spread_bp
     assert math.isclose(huf.synthetic_spread_bp, (200.0 - 39.5) / 1.091, rel_tol=0.0, abs_tol=1e-12)
     assert 45.0 < huf.savings_bp < 48.0
+
+
+def test_deposit_vs_swap_gap_arithmetic_identity() -> None:
+    """Deposit-vs-swap framing: synthetic minus direct equals basis-adjusted curve gap."""
+    domestic = 0.058
+    foreign = 0.041
+    basis = 0.0095
+    extra = 0.0015
+
+    out = all_in_funding_decomposition(domestic, foreign, basis, extra)
+    expected_gap = (foreign + basis + extra) - (domestic + extra)
+
+    assert math.isclose(out["cross_market_gap"], expected_gap, rel_tol=0.0, abs_tol=1e-12)

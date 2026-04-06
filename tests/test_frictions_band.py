@@ -64,3 +64,20 @@ def test_actionability_threshold_equality_and_near_equality_behavior() -> None:
     assert equality["is_actionable"] is False
     assert just_under["is_actionable"] is False
     assert just_over["is_actionable"] is True
+
+
+def test_xva_band_component_arithmetic_and_net_edge_direction() -> None:
+    out = friction_adjusted_arbitrage_band_bp(
+        raw_basis_edge_bp=40.0,
+        capital_charge_bp=9.0,
+        funding_spread_bp=6.0,
+        cva_proxy_bp=4.0,
+        fva_proxy_bp=3.0,
+        clearing_friction_bp=2.0,
+        liquidity_repo_friction_bp=5.0,
+        counterparty_quality_multiplier=1.0,
+        capacity_multiplier=1.0,
+    )
+    expected_friction = 9.0 + 6.0 + 4.0 + 3.0 + 2.0 + 5.0
+    assert out["total_friction_bp"] == pytest.approx(expected_friction)
+    assert out["net_edge_bp"] == pytest.approx(40.0 - expected_friction)

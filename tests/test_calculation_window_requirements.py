@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 
 from streamlit_calc_helpers import CalculationWindow, validate_required_calculation_windows
+from streamlit_calc_helpers import CALCULATION_KEY_TO_TITLE, SECTION_ORDER
 
 
 PAGE_FILES = [
@@ -60,6 +61,13 @@ def test_page_declares_required_calculation_windows(page_file: Path) -> None:
 
     assert keys
     assert all(isinstance(key, str) for key in keys)
+    unknown = [key for key in keys if key not in CALCULATION_KEY_TO_TITLE]
+    assert not unknown, f"{page_file} has unknown calculation window keys: {unknown}"
+
+
+@pytest.mark.parametrize("section_name", SECTION_ORDER)
+def test_calculation_window_section_contract_contains_expected_sections(section_name: str) -> None:
+    assert section_name in SECTION_ORDER
 
 
 def test_parity_page_required_windows_match_page_scope() -> None:
