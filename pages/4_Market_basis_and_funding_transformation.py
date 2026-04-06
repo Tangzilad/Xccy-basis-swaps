@@ -16,16 +16,31 @@ def _as_decimal(v: float) -> float:
 
 def _get_market_state(session_state: dict) -> dict:
     ms = session_state.get("market_state")
+    if isinstance(ms, dict) and "base_snapshot" in ms:
+        summary = get_canonical_market_context(session_state)["summary_1y"]["base"]
+        return {
+            "usd_rate": float(summary["usd_rate"]),
+            "huf_rate": float(summary["huf_rate"]),
+            "basis_bps": float(summary["basis_bps"]),
+            "extra_spread_bps": 12.0,
+        }
     if isinstance(ms, dict):
         return ms
-    ms = {
+    if ms is not None:
+        return {
+            "usd_rate": float(ms.huf_usd_curves["usd"].iloc[0]["usd_zero_rate"]),
+            "huf_rate": float(ms.huf_usd_curves["huf"].iloc[0]["huf_zero_rate"]),
+            "basis_bps": float(ms.basis_curve.iloc[0]["basis_bps"]),
+            "extra_spread_bps": 12.0,
+        }
+    fallback = {
         "usd_rate": _as_decimal(float(session_state.get("base_rate", 4.25))),
         "huf_rate": _as_decimal(float(session_state.get("quote_rate", 5.0))),
         "basis_bps": float(session_state.get("cross_currency_basis_bps", -22)),
         "extra_spread_bps": 12.0,
     }
-    session_state["market_state"] = ms
-    return ms
+    session_state["market_state"] = fallback
+    return fallback
 
 
 def render_page() -> None:
@@ -86,17 +101,17 @@ def render_page() -> None:
 
     st.title("4. Market basis and funding transformation")
     a, b, c = st.columns(3)
-    a.metric("Direct all-in", f"{one['domestic_all_in']:.3%}")
-    b.metric("Synthetic all-in", f"{one['synthetic_all_in']:.3%}")
-    c.metric("Gap", f"{one['cross_market_gap'] * 10000:.2f} bps")
-    st.line_chart({"Tenor": [r['Tenor'] for r in rows], "gap": [r['cross_market_gap'] for r in rows]}, x="Tenor")
+    a.metric("Direct all-in", f"{one['HUF direct']:.3%}")
+    b.metric("Synthetic all-in", f"{one['HUF synthetic']:.3%}")
+    c.metric("Gap", f"{one['HUF delta'] * 10000:.2f} bps")
+    st.line_chart({"Tenor": [r['Tenor'] for r in rows], "gap": [r['HUF delta'] for r in rows]}, x="Tenor")
     st.dataframe(rows, use_container_width=True)
     st.write("Funding transformation compares domestic route versus foreign-plus-basis route.")
     learning_hint("Positive gap means synthetic route is less economical.")
     render_calculation_windows([
-        CalculationWindow("Domestic all-in", r"r_{dom}=r_{domcurve}+s_{extra}", f"$r_{{domcurve}}={one['domestic_curve']:.4%}, s_{{extra}}={one['extra_spread']:.4%}$", ("Costs add positively.",), result=f"{one['domestic_all_in']:.4%}"),
-        CalculationWindow("Synthetic all-in", r"r_{syn}=r_{forcurve}+b+s_{extra}", f"$r_{{forcurve}}={one['foreign_curve']:.4%}, b={one['basis']:.4%}$", ("Positive basis raises synthetic cost.",), result=f"{one['synthetic_all_in']:.4%}"),
-        CalculationWindow("Cross-market gap", r"\Delta r=r_{syn}-r_{dom}", f"${one['synthetic_all_in']:.6f}-{one['domestic_all_in']:.6f}$", ("Positive gap: synthetic is worse.",), result=f"{one['cross_market_gap'] * 10000:.2f} bps"),
+        CalculationWindow("Domestic all-in", r"r_{dom}=r_{domcurve}+s_{extra}", f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$", ("Costs add positively.",), result=f"{one['HUF direct']:.4%}"),
+        CalculationWindow("Synthetic all-in", r"r_{syn}=r_{forcurve}+b+s_{extra}", f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$", ("Positive basis raises synthetic cost.",), result=f"{one['HUF synthetic']:.4%}"),
+        CalculationWindow("Cross-market gap", r"\Delta r=r_{syn}-r_{dom}", f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$", ("Positive gap: synthetic is worse.",), result=f"{one['HUF delta'] * 10000:.2f} bps"),
     ])
 
 

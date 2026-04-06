@@ -25,15 +25,31 @@ def _from_decimal(v: float) -> float:
 
 def _get_market_state(session_state: dict) -> dict:
     ms = session_state.get("market_state")
+    if isinstance(ms, dict) and "base_snapshot" in ms:
+        summary = get_canonical_market_context(session_state)["summary_1y"]["base"]
+        return {
+            "spot_fx": float(summary["spot_fx"]),
+            "usd_rate": float(summary["usd_rate"]),
+            "huf_rate": float(summary["huf_rate"]),
+            "basis_bps": float(summary["basis_bps"]),
+        }
     if isinstance(ms, dict):
         return ms
-    ms = {
-        "spot_fx": float(session_state.get("spot_fx", 1.08)),
+    if ms is not None:
+        return {
+            "spot_fx": float(getattr(ms, "spot_fx", session_state.get("spot_fx", 365.0))),
+            "usd_rate": float(ms.huf_usd_curves["usd"].iloc[0]["usd_zero_rate"]),
+            "huf_rate": float(ms.huf_usd_curves["huf"].iloc[0]["huf_zero_rate"]),
+            "basis_bps": float(ms.basis_curve.iloc[0]["basis_bps"]),
+        }
+    fallback = {
+        "spot_fx": float(session_state.get("spot_fx", 365.0)),
         "usd_rate": _as_decimal(float(session_state.get("base_rate", 4.25))),
         "huf_rate": _as_decimal(float(session_state.get("quote_rate", 5.0))),
+        "basis_bps": float(session_state.get("cross_currency_basis_bps", -22.0)),
     }
-    session_state["market_state"] = ms
-    return ms
+    session_state["market_state"] = fallback
+    return fallback
 
 
 def render_page() -> None:
@@ -263,11 +279,6 @@ def render_page() -> None:
         ),
     }
     render_required_calculation_windows(calc_windows, default_expanded=False)
-    render_calculation_windows([
-        CalculationWindow("CIP theoretical forward", r"F=S\frac{1+r_{HUF}T}{1+r_{USD}T}", f"$S={spot:.4f}, r_{{HUF}}={huf:.4%}, r_{{USD}}={usd:.4%}$", ("Higher HUF rate lifts forward.",), result=f"{one['fair_forward_no_basis']:.4f}"),
-        CalculationWindow("Implied HUF rate", r"r_{HUF}^{impl}=\frac{(F/S)(1+r_{USD}T)-1}{T}", f"$F={one['observed_forward']:.4f}$", ("Positive gap = richer implied HUF.",), result=f"{ih:.4%}"),
-        CalculationWindow("Implied USD rate", r"r_{USD}^{impl}=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}", f"$F={one['observed_forward']:.4f}$", ("Higher implied USD worsens synthetic borrowing.",), result=f"{iu:.4%}"),
-    ])
 
 
 if __name__ == "__main__":

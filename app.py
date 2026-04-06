@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import streamlit as st
 
-from src.controllers.market_state_controller import make_stress_table
-from src.state.session_access import get_canonical_market_context
 from src.controllers.market_state_controller import make_stress_table, summarize_for_shell
+from src.state.session_access import get_canonical_market_context
 from ui_shell import LEARNING_PATH, ensure_market_state_initialized, learning_hint, render_global_shell
 
 st.set_page_config(page_title="XCCY Basis Learning Lab", page_icon="📘", layout="wide")
@@ -19,6 +18,7 @@ market_state = st.session_state["market_state"]
 base_snapshot = market_state["base_snapshot"]
 stressed_snapshot = market_state["stressed_snapshot"]
 state_snapshot = {"mode": st.session_state.get("mode", "Basic"), **summarize_for_shell(base_snapshot)}
+_ = state_snapshot
 
 st.title("XCCY Basis Learning Lab")
 st.caption("A guided multipage walkthrough from foundations to strategy stress testing.")
@@ -44,13 +44,9 @@ learning_hint(
 )
 
 st.markdown("### Base vs stressed snapshots")
-base_snapshot = state["base_snapshot"]
-stressed_snapshot = state["stressed_snapshot"]
 
 c1, c2, c3 = st.columns(3)
 c1.metric("Scenario", state.get("scenario", "none"))
-c1, c2, c3 = st.columns(3)
-c1.metric("Scenario", market_state.get("scenario", "none"))
 c2.metric("Base spot", f"{base_snapshot['spot_fx']:.2f}")
 c3.metric("Stressed spot", f"{stressed_snapshot['spot_fx']:.2f}")
 

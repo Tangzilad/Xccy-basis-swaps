@@ -4,6 +4,36 @@ from src.analytics.xccy_swap import SwapPeriod, cashflow_timeline, synthetic_fun
 from src.state.session_access import get_canonical_market_context
 
 
+def _get_market_state(session_state: dict) -> dict:
+    ms = session_state.get("market_state")
+    if isinstance(ms, dict) and "base_snapshot" in ms:
+        summary = get_canonical_market_context(session_state)["summary_1y"]["base"]
+        return {
+            "spot_fx": float(summary["spot_fx"]),
+            "usd_rate": float(summary["usd_rate"]),
+            "huf_rate": float(summary["huf_rate"]),
+            "basis_bps": float(summary["basis_bps"]),
+        }
+    if isinstance(ms, dict):
+        return ms
+    if ms is not None:
+        return {
+            "spot_fx": float(getattr(ms, "spot_fx", session_state.get("spot_fx", 365.0))),
+            "usd_rate": float(ms.huf_usd_curves["usd"].iloc[0]["usd_zero_rate"]),
+            "huf_rate": float(ms.huf_usd_curves["huf"].iloc[0]["huf_zero_rate"]),
+            "basis_bps": float(ms.basis_curve.iloc[0]["basis_bps"]),
+        }
+    fallback = {
+        "spot_fx": float(session_state.get("spot_fx", 365.0)),
+        "usd_rate": float(session_state.get("base_rate", 4.25)) / 100.0,
+        "huf_rate": float(session_state.get("quote_rate", 5.0)) / 100.0,
+        "basis_bps": float(session_state.get("cross_currency_basis_bps", -22.0)),
+    }
+    session_state["market_state"] = fallback
+    return fallback
+
+
+
 def render_page() -> None:
     import streamlit as st
     from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
