@@ -1,24 +1,7 @@
 from __future__ import annotations
 
 from src.analytics.xccy_swap import SwapPeriod, cashflow_timeline, synthetic_funding_cost_outputs
-
-
-def _as_decimal(rate_like: float) -> float:
-    return rate_like / 100.0 if rate_like > 1 else rate_like
-
-
-def _get_market_state(session_state: dict) -> dict:
-    market_state = session_state.get("market_state")
-    if isinstance(market_state, dict):
-        return market_state
-    state = {
-        "spot_fx": float(session_state.get("spot_fx", 1.08)),
-        "usd_rate": _as_decimal(float(session_state.get("base_rate", 4.25))),
-        "huf_rate": _as_decimal(float(session_state.get("quote_rate", 5.0))),
-        "basis_bps": float(session_state.get("cross_currency_basis_bps", -22)),
-    }
-    session_state["market_state"] = state
-    return state
+from src.state.session_access import get_canonical_market_context
 
 
 def render_page() -> None:
@@ -29,12 +12,15 @@ def render_page() -> None:
     st.set_page_config(page_title="2. XCCY mechanics", page_icon="📘", layout="wide")
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[1]
-    m = _get_market_state(st.session_state)
 
-    spot = float(m["spot_fx"])
-    usd_rate = _as_decimal(float(m["usd_rate"]))
-    huf_rate = _as_decimal(float(m["huf_rate"]))
-    basis = float(m["basis_bps"]) / 10_000.0
+    context = get_canonical_market_context(st.session_state)
+    summary = context["summary_1y"]["base"]
+
+    spot = float(summary["spot_fx"])
+    usd_rate = float(summary["usd_rate"])
+    huf_rate = float(summary["huf_rate"])
+    basis = float(summary["basis_bps"]) / 10_000.0
+
     timeline = cashflow_timeline(10_000_000, spot, [SwapPeriod("1Y", 1.0, usd_rate, huf_rate)], basis)
     forward = spot * (1 + (huf_rate + basis)) / (1 + usd_rate)
     out = synthetic_funding_cost_outputs(spot, forward, huf_rate, basis, 1.0)
