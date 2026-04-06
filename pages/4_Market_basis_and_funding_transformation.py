@@ -1,12 +1,33 @@
 from __future__ import annotations
 
-from src.analytics.funding import all_in_funding_decomposition
-from src.state.session_access import get_canonical_market_context
 from src.analytics.funding import (
+    all_in_funding_decomposition,
     build_tenor_funding_table,
     funding_role_interpretation,
     issuance_choice,
 )
+from src.state.session_access import get_canonical_market_context
+
+
+def _get_market_state(session_state: dict) -> object:
+    return session_state.get("market_state")
+
+
+def _normalize_role_from_state(raw_role: object) -> str:
+    role = str(raw_role or "").strip().lower()
+    if role in {"issuer", "investor", "treasury"}:
+        return role
+    if role in {"learning", "analyst", "risk"}:
+        return "treasury"
+    return "issuer"
+
+
+def _recommendation_state(delta_bp: float, friction_threshold_bp: float) -> tuple[str, str]:
+    if abs(delta_bp) <= friction_threshold_bp:
+        return "Within friction band", "🟡"
+    if delta_bp < 0:
+        return "Synthetic route preferred", "✅"
+    return "Direct route preferred", "⚠️"
 
 
 def render_page() -> None:
@@ -34,11 +55,10 @@ def render_page() -> None:
         rows.append({"Tenor": tenor, **all_in_funding_decomposition(usd, huf, basis, extra)})
 
     one = next(r for r in rows if r["Tenor"] == "1Y")
-    summary = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
+    summary = market_context["summary_1y"]["base"]
     usd = float(summary["usd_rate"])
     huf = float(summary["huf_rate"])
     basis = float(summary["basis_bps"]) / 10_000.0
-    extra = 12.0 / 10_000.0
 
     tenors = ("3M", "6M", "1Y", "2Y", "5Y")
     scales = (0.9, 1.0, 1.05, 1.1, 1.2)
@@ -55,7 +75,7 @@ def render_page() -> None:
         foreign_curve_slope=0.0005,
     )
     one = next(r for r in rows if r["Tenor"] == "1Y")
-    friction_bps_1y = float(market_context["summary_1y"]["base"]["funding_friction_bps"])
+    friction_bps_1y = float(summary["funding_friction_bps"])
 
     huf_choice = issuance_choice(
         issue_currency="HUF",
@@ -132,14 +152,32 @@ def render_page() -> None:
     )
     st.write("Funding transformation compares domestic route versus foreign-plus-basis route.")
     learning_hint("Positive gap means synthetic route is less economical.")
-    render_calculation_windows([
-        CalculationWindow("Domestic all-in", r"r_{dom}=r_{domcurve}+s_{extra}", f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$", ("Costs add positively.",), result=f"{one['HUF direct']:.4%}"),
-        CalculationWindow("Synthetic all-in", r"r_{syn}=r_{forcurve}+b+s_{extra}", f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$", ("Positive basis raises synthetic cost.",), result=f"{one['HUF synthetic']:.4%}"),
-        CalculationWindow("Cross-market gap", r"\Delta r=r_{syn}-r_{dom}", f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$", ("Positive gap: synthetic is worse.",), result=f"{one['HUF delta'] * 10000:.2f} bps"),
-    ])
+    render_calculation_windows(
+        [
+            CalculationWindow(
+                "Domestic all-in",
+                r"r_{dom}=r_{domcurve}+s_{extra}",
+                f"$r_{{domcurve}}={(one['HUF direct'] - one['extra_spread']):.4%}, s_{{extra}}={one['extra_spread']:.4%}$",
+                ("Costs add positively.",),
+                result=f"{one['HUF direct']:.4%}",
+            ),
+            CalculationWindow(
+                "Synthetic all-in",
+                r"r_{syn}=r_{forcurve}+b+s_{extra}",
+                f"$r_{{forcurve}}={(one['USD direct'] - one['extra_spread']):.4%}, b={one['basis']:.4%}$",
+                ("Positive basis raises synthetic cost.",),
+                result=f"{one['HUF synthetic']:.4%}",
+            ),
+            CalculationWindow(
+                "Cross-market gap",
+                r"\Delta r=r_{syn}-r_{dom}",
+                f"${one['HUF synthetic']:.6f}-{one['HUF direct']:.6f}$",
+                ("Positive gap: synthetic is worse.",),
+                result=f"{one['HUF delta'] * 10000:.2f} bps",
+            ),
+        ]
+    )
 
 
 if __name__ == "__main__":
-    render_page()
-else:
     render_page()
