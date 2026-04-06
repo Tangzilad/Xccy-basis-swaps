@@ -4,7 +4,7 @@ import streamlit as st
 
 from shared_page_helpers import render_page_footer, render_page_header
 from src.analytics.conversion_factor import conversion_factor_from_fx
-from src.analytics.conversion_factor import conversion_factor_curve_aware, conversion_factor_from_fx, translate_spread_bp
+from src.analytics.conversion_factor import conversion_factor_curve_aware, translate_spread_bp
 from src.analytics.frictions import friction_adjusted_arbitrage_band_bp
 from src.analytics.funding import all_in_funding_decomposition
 from src.analytics.hedging import hedged_pickup_decomposition_bp, matched_vs_rolling_hedge_economics_bp
@@ -115,14 +115,6 @@ def _compute_metrics(snapshot: dict) -> dict:
 
 
 def render_page() -> None:
-    import streamlit as st
-    from streamlit_calc_helpers import (
-        CalculationWindow,
-        SignConventionContext,
-        render_calculation_windows,
-        render_shared_sign_convention,
-    )
-    from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="7. HUF/USD strategy and stress lab", page_icon="📘", layout="wide")
     render_global_shell()

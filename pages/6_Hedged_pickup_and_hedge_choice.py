@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import streamlit as st
 
-from shared_page_helpers import get_market_params, render_page_footer, render_page_header
+from shared_page_helpers import render_page_footer, render_page_header
 from src.analytics.conversion_factor import (
     conversion_factor_curve_aware,
     conversion_factor_simple,
@@ -16,33 +16,8 @@ from src.analytics.hedging import (
 )
 from src.state.session_access import get_canonical_market_context
 from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
-from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
-
-
-def render_page() -> None:
-    st.set_page_config(page_title="6. Hedged pickup and hedge choice", page_icon="📘", layout="wide")
-    render_global_shell()
-    st.session_state.suggested_page = LEARNING_PATH[5]
-
-    # --- Market context ---
-    summary = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
-    m = get_market_params(st.session_state)
-    spot = float(m["spot_fx"])
-    usd = float(m["usd_rate"])
-    huf = float(m["huf_rate"])
-    basis = float(m["basis_bps"])
-
-    fwd = spot * (1 + huf) / (1 + usd)
-
-    # --- Conversion factors ---
-    simple_cf_payload = conversion_factor_simple(spot, fwd)
-    simple_cf = float(simple_cf_payload["conversion_factor"])
-
-    tenor_years = [0.5, 1.0, 2.0]
-    forward_curve = [spot * (1 + huf * t) / (1 + usd * t) for t in tenor_years]
-    discount_factors = [1 / (1 + usd * t) for t in tenor_years]
+from ui_shell import learning_hint
 from src.explainers.theory_panels import render_pedagogical_scaffold
-from src.state.session_access import get_canonical_market_context
 
 REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
     "conversion_factor",
@@ -249,7 +224,6 @@ def render_page() -> None:
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[5]
 
-    payload = _build_payload(st.session_state)
 
     st.title("6. Hedged pickup and hedge choice")
     render_pedagogical_scaffold(

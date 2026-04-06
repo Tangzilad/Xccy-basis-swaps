@@ -6,7 +6,7 @@ in every page file, and provides reusable pedagogical UI components.
 
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional, Sequence
+from typing import Any, Dict, List
 
 import streamlit as st
 

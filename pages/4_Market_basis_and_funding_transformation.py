@@ -56,14 +56,10 @@ REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
 
 
 def render_page() -> None:
-    import streamlit as st
     from streamlit_calc_helpers import (
-        CalculationWindow,
         SignConventionContext,
-        render_calculation_windows,
         render_shared_sign_convention,
     )
-    from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="4. Market basis and funding transformation", page_icon="📘", layout="wide")
     render_global_shell()

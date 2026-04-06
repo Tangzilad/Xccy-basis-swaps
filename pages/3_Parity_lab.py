@@ -3,7 +3,6 @@ from __future__ import annotations
 import streamlit as st
 
 from shared_page_helpers import (
-    as_decimal,
     from_decimal,
     get_market_params,
     render_page_footer,
@@ -11,8 +10,6 @@ from shared_page_helpers import (
 )
 from src.analytics.parity import (
     fair_value_comparison,
-    implied_huf_rate_from_spot_forward,
-    implied_usd_rate_from_spot_forward,
     parity_decomposition,
     tenor_ladder_decomposition,
     tenor_to_year_fraction,
@@ -21,8 +18,6 @@ from src.state.session_access import get_canonical_market_context
 from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
 from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
-from src.analytics.parity import parity_decomposition, tenor_ladder_decomposition, tenor_to_year_fraction
-from src.state.session_access import get_canonical_market_context
 
 TENOR_LADDER = ["3M", "6M", "1Y", "2Y", "5Y", "10Y"]
 WORKED_EXAMPLE = {
@@ -53,14 +48,10 @@ def _get_market_state(session_state: dict) -> object:
 
 
 def render_page() -> None:
-    import streamlit as st
     from streamlit_calc_helpers import (
-        CalculationWindow,
         SignConventionContext,
-        render_required_calculation_windows,
         render_shared_sign_convention,
     )
-    from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
 
     st.set_page_config(page_title="3. Parity lab", page_icon="📘", layout="wide")
     render_global_shell()
