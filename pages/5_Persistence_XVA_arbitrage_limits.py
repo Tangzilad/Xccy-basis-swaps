@@ -36,3 +36,9 @@ def render_page() -> None:
         CalculationWindow("Net edge", r"\text{Raw edge}-\text{Friction}", f"${base['raw_edge_bp']:.2f}-{base['total_friction_bp']:.2f}$", ("Positive net edge implies residual arbitrage value.",), result=f"{base['net_edge_bp']:.2f} bps"),
         CalculationWindow("Actionability", r"|\text{Raw edge}|>\text{Friction}", f"$|{base['raw_edge_bp']:.2f}|>{base['total_friction_bp']:.2f}$", ("Must clear band to trade.",), result="Actionable" if base["is_actionable"] else "Not actionable"),
     ])
+
+
+if __name__ == "__main__":
+    render_page()
+else:
+    render_page()

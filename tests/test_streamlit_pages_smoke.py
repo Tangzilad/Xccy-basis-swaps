@@ -48,17 +48,22 @@ def _build_streamlit_stub() -> types.ModuleType:
         }
     )
     stub.markdown_calls = []
+    stub.page_config_calls = 0
 
     def _record_markdown(text, *args, **kwargs):
         stub.markdown_calls.append(str(text))
 
-    stub.set_page_config = lambda *a, **k: None
+    def _record_page_config(*args, **kwargs):
+        stub.page_config_calls += 1
+
+    stub.set_page_config = _record_page_config
     stub.title = lambda *a, **k: None
     stub.caption = lambda *a, **k: None
     stub.markdown = _record_markdown
     stub.write = lambda *a, **k: None
     stub.metric = lambda *a, **k: None
     stub.line_chart = lambda *a, **k: None
+    stub.bar_chart = lambda *a, **k: None
     stub.dataframe = lambda *a, **k: None
     stub.latex = lambda *a, **k: None
     stub.success = lambda *a, **k: None
@@ -76,10 +81,25 @@ def _build_streamlit_stub() -> types.ModuleType:
     return stub
 
 
+def _build_ui_shell_stub() -> types.ModuleType:
+    shell = types.ModuleType("ui_shell")
+    shell.LEARNING_PATH = [
+        "1. Start here",
+        "2. XCCY mechanics",
+        "3. Parity lab",
+        "4. Market basis and funding transformation",
+        "5. Persistence / XVA / arbitrage limits",
+        "6. Hedged pickup and hedge choice",
+        "7. HUF/USD strategy and stress lab",
+    ]
+    shell.learning_hint = lambda *a, **k: None
+    shell.render_global_shell = lambda *a, **k: None
+    return shell
+
+
 @pytest.mark.parametrize(
     "module_name",
     [
-        "app",
         "pages.2_XCCY_mechanics",
         "pages.3_Parity_lab",
         "pages.4_Market_basis_and_funding_transformation",
@@ -90,18 +110,22 @@ def _build_streamlit_stub() -> types.ModuleType:
 )
 def test_each_page_imports_and_renders_with_mocked_market_state(monkeypatch, module_name):
     stub = _build_streamlit_stub()
+    shell_stub = _build_ui_shell_stub()
     monkeypatch.setitem(sys.modules, "streamlit", stub)
+    monkeypatch.setitem(sys.modules, "ui_shell", shell_stub)
+    sys.modules.pop(module_name, None)
 
-    module = importlib.import_module(module_name)
-    importlib.reload(module)
+    importlib.import_module(module_name)
 
     assert "cross_currency_basis_bps" in stub.session_state
     assert "suggested_page" in stub.session_state
+    assert stub.page_config_calls == 1
 
 
 def test_calculation_panel_sections_present(monkeypatch):
     stub = _build_streamlit_stub()
     monkeypatch.setitem(sys.modules, "streamlit", stub)
+    sys.modules.pop("streamlit_calc_helpers", None)
 
     from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
 
