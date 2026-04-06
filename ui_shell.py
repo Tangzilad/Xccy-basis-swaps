@@ -1,10 +1,21 @@
 from __future__ import annotations
 
-from copy import deepcopy
-
 import streamlit as st
 
-from src.state.market_state import apply_control_patch, init_market_state_from_generator, snapshot_for_narrative
+from src.controllers.market_state_controller import (
+    SCENARIO_LIBRARY,
+    apply_state_scenario,
+    build_custom_scenario,
+    clip_regime,
+    ensure_market_state,
+    regenerate_market_state,
+    summarize_for_shell,
+)
+    make_stress_table,
+    regenerate_market_state,
+    summarize_for_shell,
+)
+from src.explainers.narratives import ExplanationSpec, explain_transition_dict
 
 LEARNING_PATH = [
     "1. Start here",
@@ -16,7 +27,82 @@ LEARNING_PATH = [
     "7. HUF/USD strategy and stress lab",
 ]
 
-ROLE_OPTIONS = ["issuer", "investor", "treasury", "arbitrageur"]
+
+SCENARIO_OPTIONS = {
+    "none": "No scenario",
+    **{name: name.replace("_", " ").title() for name in SCENARIO_LIBRARY},
+    "custom_parallel": "Custom Parallel",
+    "custom_steepener": "Custom Steepener",
+    "custom_flattener": "Custom Flattener",
+}
+
+
+
+# Keep smoke-test stubs and cold imports resilient.
+try:
+    st.session_state.setdefault("suggested_page", LEARNING_PATH[0])
+except Exception:
+    pass
+
+
+def _button(label: str) -> bool:
+    button_fn = getattr(st, "button", None)
+    if callable(button_fn):
+        return bool(button_fn(label))
+    return False
+
+def _sync_legacy_fields() -> None:
+    summary = summarize_for_shell(st.session_state.market_state["base_snapshot"])
+    st.session_state.base_rate = summary["base_rate"]
+    st.session_state.quote_rate = summary["quote_rate"]
+    st.session_state.spot_fx = summary["spot_fx"]
+    st.session_state.cross_currency_basis_bps = int(round(summary["cross_currency_basis_bps"]))
+    st.session_state.vol_regime = "Normal"
+
+    # Legacy keys used by lesson pages.
+    st.session_state.market_state["usd_rate"] = summary["base_rate"] / 100.0
+    st.session_state.market_state["huf_rate"] = summary["quote_rate"] / 100.0
+    st.session_state.market_state["basis_bps"] = summary["cross_currency_basis_bps"]
+    st.session_state.market_state["spot_fx"] = summary["spot_fx"]
+
+
+def ensure_market_state_initialized() -> None:
+    defaults = {
+        "mode": "Basic",
+        "base_rate": 4.25,
+        "quote_rate": 5.0,
+        "spot_fx": 365.0,
+        "cross_currency_basis_bps": -22,
+        "vol_regime": "Normal",
+        "suggested_page": LEARNING_PATH[0],
+        "market_seed": 7,
+        "custom_scenario_magnitude": 0.25,
+        "selected_scenario": "none",
+        "market_narrative": "Use sidebar controls to regenerate markets and apply scenarios.",
+        "active_role": "treasury",
+    }
+    for key, value in defaults.items():
+        st.session_state.setdefault(key, value)
+
+    st.session_state.market_state = ensure_market_state(
+        st.session_state.get("market_state"), seed=st.session_state.market_seed
+    )
+    _sync_legacy_fields()
+
+
+    "calm_baseline": "Calm baseline",
+    "capital_outflow_shock": "Capital outflow shock",
+    "currency_devaluation_shock": "Currency devaluation shock",
+    "sovereign_downgrade_liquidity_shock": "Sovereign downgrade + liquidity shock",
+    "usd_funding_shortage": "USD funding shortage",
+    "central_bank_divergence": "Central bank divergence",
+    "basis_normalisation": "Basis normalisation",
+    "global_risk_off": "Global risk-off",
+    "local_disinflation_relief": "Local disinflation relief",
+    "custom_parallel": "Custom parallel",
+    "custom_steepener": "Custom steepener",
+    "custom_flattener": "Custom flattener",
+}
 
 EXPLANATION_INCLUDE_KEYS = {
     "mechanics": ["spot_fx", "base_rate", "quote_rate", "cross_currency_basis_bps", "vol_regime"],
@@ -29,22 +115,47 @@ EXPLANATION_INCLUDE_KEYS = {
 }
 
 
-def ensure_market_state_initialized() -> None:
-    st.session_state.setdefault("market_state", init_market_state_from_generator())
-    st.session_state.setdefault("suggested_page", LEARNING_PATH[0])
-
-    st.session_state.market_state = ensure_market_state(
-        st.session_state.get("market_state"), seed=st.session_state.market_seed
-    )
-    _sync_legacy_fields()
-
-
 def _scenario_from_selection(scenario_name: str):
     if scenario_name in SCENARIO_LIBRARY:
         return SCENARIO_LIBRARY[scenario_name]
     if scenario_name in {"custom_parallel", "custom_steepener", "custom_flattener"}:
         return build_custom_scenario(scenario_name, float(st.session_state.custom_scenario_magnitude))
     return None
+
+
+def _vol_regime_from_market_state(state: dict[str, object]) -> str:
+    regime_name = str(state.get("regime", {}).get("name", "baseline"))
+    mapper = {"calm": "Calm", "stress": "Stressed", "baseline": "Normal"}
+    return mapper.get(regime_name, "Normal")
+
+
+def _sync_sidebar_from_base_snapshot() -> None:
+    state = st.session_state["market_state"]
+    shell_view = summarize_for_shell(state["base_snapshot"])
+    st.session_state.base_rate = float(shell_view["base_rate"])
+    st.session_state.quote_rate = float(shell_view["quote_rate"])
+    st.session_state.spot_fx = float(shell_view["spot_fx"])
+    st.session_state.cross_currency_basis_bps = int(round(float(shell_view["cross_currency_basis_bps"])))
+    st.session_state.vol_regime = _vol_regime_from_market_state(state)
+
+
+def ensure_market_state_initialized() -> None:
+    st.session_state.setdefault("market_seed", 7)
+    st.session_state["market_state"] = ensure_market_state(
+        st.session_state.get("market_state"),
+        seed=int(st.session_state.market_seed),
+    )
+
+    st.session_state.setdefault("selected_scenario", "none")
+    st.session_state.setdefault("custom_scenario_magnitude", 0.5)
+    st.session_state.setdefault("active_role", ROLE_OPTIONS[0])
+    st.session_state.setdefault("mode", "Learning")
+    st.session_state.setdefault("latest_transition_narrative", {})
+    st.session_state.setdefault("market_narrative", "")
+    st.session_state.setdefault("suggested_page", LEARNING_PATH[0])
+    st.session_state.setdefault("previous_snapshot", {})
+
+    _sync_sidebar_from_base_snapshot()
 
 
 def _capture_snapshot() -> dict[str, object]:
@@ -152,49 +263,44 @@ def _build_spec(page_context: str) -> ExplanationSpec:
 
 def render_global_shell(*, page_context: str = "overview") -> None:
     """Render shared controls and a persistent suggested learning path."""
+    _ = page_context
     ensure_market_state_initialized()
     state = st.session_state["market_state"]
-    snapshot = snapshot_for_narrative(state)
-
-    ms = st.session_state.market_state
-
-    ms = st.session_state.market_state
 
     with st.sidebar:
         st.header("Learning + Market Controls")
-        mode = st.segmented_control(
+        st.session_state.mode = st.segmented_control(
             "Mode",
             options=["Basic", "Learning"],
-            default=snapshot["mode"],
+            default=st.session_state.mode,
             help="Basic simplifies narrative. Learning adds rationale and extra interpretation.",
         )
 
-        st.subheader("Global market-state controls")
-        base_rate = st.slider("Base currency policy rate (%)", 0.0, 12.0, float(snapshot["base_rate"]), 0.05)
-        quote_rate = st.slider("Quote currency policy rate (%)", 0.0, 15.0, float(snapshot["quote_rate"]), 0.05)
-        spot_fx = st.number_input(
-            "Spot FX", min_value=120.0, max_value=1200.0, value=float(snapshot["spot_fx"]), step=0.0001
-        )
-        basis_bps = st.slider(
-            "Cross-currency basis (bps)", -250, 250, int(round(float(snapshot["cross_currency_basis_bps"]))), 1
-        )
-        vol_regime = st.selectbox(
-            "Volatility regime",
-            ["Calm", "Normal", "Stressed"],
-            index=["Calm", "Normal", "Stressed"].index(str(snapshot["vol_regime"])),
+        st.subheader("Regime generator")
+        st.session_state.market_seed = int(
+            st.number_input("Seed", min_value=0, max_value=999_999, value=int(st.session_state.market_seed), step=1)
         )
 
-        apply_control_patch(
-            state,
-            {
-                "mode": mode,
-                "base_rate": base_rate,
-                "quote_rate": quote_rate,
-                "spot_fx": spot_fx,
-                "cross_currency_basis_bps": basis_bps,
-                "vol_regime": vol_regime,
-            },
+        regime = st.session_state.market_state["regime"]
+        st.subheader("Global market-state controls")
+        st.session_state.base_rate = st.slider(
+            "Base currency policy rate (%)", 0.0, 12.0, float(st.session_state.base_rate), 0.05
         )
+        st.session_state.quote_rate = st.slider(
+            "Quote currency policy rate (%)", 0.0, 15.0, float(st.session_state.quote_rate), 0.05
+        )
+        st.session_state.spot_fx = st.number_input(
+            "Spot FX", min_value=120.0, max_value=1200.0, value=float(st.session_state.spot_fx), step=0.0001
+        )
+        st.session_state.cross_currency_basis_bps = st.slider(
+            "Cross-currency basis (bps)", -250, 250, int(st.session_state.cross_currency_basis_bps), 1
+        )
+        st.session_state.vol_regime = st.selectbox(
+            "Volatility regime",
+            ["Calm", "Normal", "Stressed"],
+            index=["Calm", "Normal", "Stressed"].index(str(st.session_state.vol_regime)),
+        )
+
         st.session_state.active_role = st.selectbox(
             "Interpretation role",
             options=ROLE_OPTIONS,
@@ -202,6 +308,7 @@ def render_global_shell(*, page_context: str = "overview") -> None:
             help="Narrative interpretation will adapt to this desk perspective.",
         )
 
+        previous_snapshot = st.session_state.get("previous_snapshot") or _capture_snapshot()
         current_snapshot = _capture_snapshot()
         spec = _build_spec(page_context)
         include_keys = EXPLANATION_INCLUDE_KEYS.get(page_context, EXPLANATION_INCLUDE_KEYS["overview"])
@@ -219,19 +326,15 @@ def render_global_shell(*, page_context: str = "overview") -> None:
         changed_inputs = transition_payload.get("changed_inputs", [])
         if changed_inputs:
             for change in changed_inputs:
-                st.write(
-                    f"• {change['name']}: {change['previous']} → {change['current']}"
-                )
+                st.write(f"• {change['name']}: {change['previous']} → {change['current']}")
         else:
             st.write("• No included inputs changed in this transition.")
         st.caption(f"Transmission: {transition_payload['transmission_mechanism']}")
         st.caption(f"Economic channel: {transition_payload['economic_channel']}")
-        st.caption(
-            f"Role ({st.session_state.active_role}): {transition_payload['role_interpretation']}"
-        )
+        st.caption(f"Role ({st.session_state.active_role}): {transition_payload['role_interpretation']}")
         st.caption(f"Inspect next: {transition_payload['inspect_next']}")
 
-        regime = st.session_state.market_state["regime"]
+        regime = state["regime"]
         regime_name = st.selectbox("Regime preset", ["baseline", "calm", "stress"], index=0)
         level = st.slider("Level", -2.0, 2.0, float(regime.get("level", 0.0)), 0.05)
         slope = st.slider("Slope", -2.0, 2.0, float(regime.get("slope", 0.0)), 0.05)
@@ -239,7 +342,7 @@ def render_global_shell(*, page_context: str = "overview") -> None:
         noise_scale = st.slider("Volatility / noise", 0.2, 3.0, float(regime.get("noise_scale", 1.0)), 0.05)
         liquidity = st.slider("Liquidity", 0.4, 2.0, float(regime.get("liquidity", 1.0)), 0.05)
 
-        if st.button("Regenerate market"):
+        if _button("Regenerate market"):
             st.session_state.market_state["seed"] = st.session_state.market_seed
             st.session_state.market_state["regime"] = clip_regime(
                 {
@@ -253,11 +356,35 @@ def render_global_shell(*, page_context: str = "overview") -> None:
             )
             st.session_state.market_state = regenerate_market_state(st.session_state.market_state)
             _sync_legacy_fields()
+        if st.button("Regenerate market"):
+            updated_state = {
+                **state,
+                "seed": int(st.session_state.market_seed),
+                "regime": clip_regime(
+                    {
+                        "name": regime_name,
+                        "level": level,
+                        "slope": slope,
+                        "curvature": curvature,
+                        "noise_scale": noise_scale,
+                        "liquidity": liquidity,
+                    }
+                ),
+            }
+            st.session_state.market_state = regenerate_market_state(updated_state)
+            state = st.session_state.market_state
+            _sync_sidebar_from_base_snapshot()
 
         st.divider()
         st.subheader("Scenario selector")
         selected_label = SCENARIO_OPTIONS.get(st.session_state.selected_scenario, "No scenario")
-        scenario_label = st.selectbox("Scenario", list(SCENARIO_OPTIONS.values()), index=list(SCENARIO_OPTIONS.values()).index(selected_label))
+        scenario_label = st.selectbox(
+            "Scenario",
+            list(SCENARIO_OPTIONS.values()),
+            index=list(SCENARIO_OPTIONS.values()).index(selected_label),
+        )
+        all_labels = list(SCENARIO_OPTIONS.values())
+        scenario_label = st.selectbox("Scenario", all_labels, index=all_labels.index(selected_label))
         scenario_name = next(key for key, value in SCENARIO_OPTIONS.items() if value == scenario_label)
         st.session_state.selected_scenario = scenario_name
 
@@ -266,13 +393,18 @@ def render_global_shell(*, page_context: str = "overview") -> None:
                 "Custom magnitude", -1.5, 1.5, float(st.session_state.custom_scenario_magnitude), 0.05
             )
 
-        if st.button("Apply scenario"):
+        if _button("Apply scenario"):
             scenario = _scenario_from_selection(scenario_name)
             if scenario is None:
-                st.session_state.market_state["stressed_snapshot"] = st.session_state.market_state["base_snapshot"]
-                st.session_state.market_state["scenario"] = "none"
+                st.session_state.market_state = regenerate_market_state(state)
             else:
                 st.session_state.market_state = apply_state_scenario(st.session_state.market_state, scenario)
+            _sync_legacy_fields()
+                st.session_state.market_state = apply_state_scenario(state, scenario)
+            state = st.session_state.market_state
+
+        stress_table = make_stress_table(state["base_snapshot"], state["stressed_snapshot"])
+        st.caption(f"Active stress tenors: {len(stress_table)}")
 
         st.divider()
         st.subheader("Suggested learning path")
@@ -282,9 +414,11 @@ def render_global_shell(*, page_context: str = "overview") -> None:
 
         st.caption(st.session_state.market_narrative)
 
+    st.session_state.previous_snapshot = current_snapshot
+
 
 def learning_hint(text: str) -> None:
     ensure_market_state_initialized()
-    snapshot = snapshot_for_narrative(st.session_state["market_state"])
-    if snapshot["mode"] == "Learning":
+    if st.session_state.get("mode", "Basic") == "Learning":
+    if st.session_state.mode == "Learning":
         st.info(text)
