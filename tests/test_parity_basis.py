@@ -69,3 +69,27 @@ def test_forward_difference_and_raw_wedge_share_sign_convention() -> None:
     assert high_cmp["raw_basis_wedge_bp"] > 0
     assert low_cmp["forward_difference"] < 0
     assert low_cmp["raw_basis_wedge_bp"] < 0
+
+
+def test_inversion_consistency_holds_for_non_1y_tenor() -> None:
+    spot = 349.5
+    usd_rate = 0.039
+    huf_rate = 0.061
+    t = 2.0
+
+    forward = cip_theoretical_forward(spot, usd_rate, huf_rate, t)
+    assert math.isclose(implied_huf_rate_from_spot_forward(spot, forward, usd_rate, t), huf_rate, abs_tol=1e-12)
+    assert math.isclose(implied_usd_rate_from_spot_forward(spot, forward, huf_rate, t), usd_rate, abs_tol=1e-12)
+
+
+def test_wedge_identity_equals_observed_minus_theoretical_forward() -> None:
+    spot = 370.0
+    usd_rate = 0.047
+    huf_rate = 0.069
+    t = 0.5
+    observed = 376.25
+
+    theoretical = cip_theoretical_forward(spot, usd_rate, huf_rate, t)
+    comparison = fair_value_comparison(spot, observed, usd_rate, huf_rate, t)
+
+    assert math.isclose(comparison["forward_difference"], observed - theoretical, rel_tol=0.0, abs_tol=1e-12)

@@ -6,6 +6,8 @@ from src.analytics.parity import (
     cip_theoretical_forward,
     fair_value_comparison,
     implied_huf_rate_from_spot_forward,
+    implied_usd_rate_from_spot_forward,
+    parity_decomposition,
 )
 from tests._test_utils import CANDIDATE_MODULES, try_import_any
 
@@ -36,6 +38,20 @@ def test_cip_identity_consistency_with_implied_huf_recovery() -> None:
     assert math.isclose(recovered, huf_rate, rel_tol=0.0, abs_tol=1e-12)
 
 
+def test_inversion_consistency_recovers_both_sides_from_cip_forward() -> None:
+    spot = 358.25
+    usd_rate = 0.041
+    huf_rate = 0.063
+    year_fraction = 0.75
+
+    theoretical_forward = cip_theoretical_forward(spot, usd_rate, huf_rate, year_fraction)
+    implied_huf = implied_huf_rate_from_spot_forward(spot, theoretical_forward, usd_rate, year_fraction)
+    implied_usd = implied_usd_rate_from_spot_forward(spot, theoretical_forward, huf_rate, year_fraction)
+
+    assert math.isclose(implied_huf, huf_rate, rel_tol=0.0, abs_tol=1e-12)
+    assert math.isclose(implied_usd, usd_rate, rel_tol=0.0, abs_tol=1e-12)
+
+
 @pytest.mark.parametrize("spot,fwd,r_dom,r_for,t", [(1.0, 1.0, 0.0, 0.0, 1.0), (0.85, 0.92, 0.08, -0.01, 0.25), (150.0, 148.0, 0.015, 0.012, 2.0)])
 def test_parity_formula_returns_finite_values_for_extremes(spot, fwd, r_dom, r_for, t):
     spread = _covered_interest_parity_spread(spot, fwd, r_dom, r_for, t)
@@ -62,6 +78,25 @@ def test_raw_basis_wedge_sign_logic_tracks_forward_deviation(deviation: float) -
 
     assert math.copysign(1.0, out["forward_difference"]) == math.copysign(1.0, deviation)
     assert math.copysign(1.0, out["raw_basis_wedge_bp"]) == math.copysign(1.0, deviation)
+
+
+def test_wedge_identity_matches_observed_minus_theoretical_forward() -> None:
+    spot = 361.0
+    usd_rate = 0.045
+    huf_rate = 0.066
+    year_fraction = 1.0
+
+    observed_forward = 368.4
+    output = parity_decomposition(
+        spot_huf_per_usd=spot,
+        observed_forward_huf_per_usd=observed_forward,
+        usd_rate=usd_rate,
+        huf_rate=huf_rate,
+        year_fraction=year_fraction,
+    )
+
+    expected_wedge = observed_forward - output["cip_implied_forward"]
+    assert math.isclose(output["forward_difference"], expected_wedge, rel_tol=0.0, abs_tol=1e-12)
 
 
 def test_project_parity_module_exposes_at_least_one_callable_when_present():
