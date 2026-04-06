@@ -6,6 +6,7 @@ from src.analytics.conversion_factor import (
     conversion_factor_curve_aware,
     conversion_factor_from_fx,
     conversion_factor_simple,
+    spread_translation_round_trip_bp,
     translate_spread_bp,
     translate_spread_inverse_bp,
 )
@@ -102,3 +103,23 @@ def test_matched_vs_rolling_stability_and_preferred_hedge_consistency() -> None:
     tie = matched_vs_rolling_hedge_economics_bp(matched_cost, 50.0, 14.0, risk_aversion_multiplier=1.0)
     assert tie["benefit_of_rolling_bp"] == pytest.approx(0.0)
     assert tie["preferred_hedge"] == "matched"
+
+
+def test_spread_translation_round_trip_payload_path() -> None:
+    payload = conversion_factor_curve_aware(
+        spot_huf_per_usd=360.0,
+        forward_huf_per_usd_by_tenor=[361.0, 363.0, 365.0],
+        tenor_years=[0.5, 1.0, 2.0],
+        discount_factors=[0.99, 0.97, 0.94],
+        accrual_factors=[0.5, 0.5, 1.0],
+    )
+
+    round_trip = spread_translation_round_trip_bp(
+        huf_spread_bp=17.25,
+        conversion_factor=payload,
+        tolerance_bp=1e-10,
+    )
+
+    assert round_trip["round_trip_within_tolerance"] is True
+    assert round_trip["huf_bp_round_trip"] == pytest.approx(17.25)
+    assert abs(round_trip["round_trip_residual_bp"]) <= 1e-10
