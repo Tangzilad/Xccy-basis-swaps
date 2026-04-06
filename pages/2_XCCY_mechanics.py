@@ -1,8 +1,16 @@
 from __future__ import annotations
 
+import streamlit as st
+
+from shared_page_helpers import render_page_footer, render_page_header
 from src.analytics.xccy_swap import SwapPeriod, cashflow_timeline, synthetic_funding_cost_outputs
 from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
+from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
+from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
+
+
+def render_page() -> None:
 
 REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
     "theoretical_forward",
@@ -37,6 +45,10 @@ def render_page() -> None:
     forward = spot * (1 + (huf_rate + basis)) / (1 + usd_rate)
     out = synthetic_funding_cost_outputs(spot, forward, huf_rate, basis, 1.0)
 
+    # --- Header with learning objectives ---
+    render_page_header(1, "2. XCCY Mechanics")
+
+    # --- Metrics ---
     st.title("2. XCCY mechanics")
     render_pedagogical_scaffold(
         st,
@@ -62,8 +74,55 @@ def render_page() -> None:
     c1.metric("Spot", f"{spot:.4f}")
     c2.metric("Basis", f"{basis * 10_000:.1f} bps")
     c3.metric("Basis drag", f"{out['basis_drag_bp']:.2f} bps")
-    st.bar_chart({"date": [x["date"] for x in timeline], "usd": [x["usd_cashflow"] for x in timeline]}, x="date")
+
+    # --- Cashflow timeline ---
+    st.markdown("### Cashflow Timeline")
+    st.bar_chart(
+        {"date": [x["date"] for x in timeline], "usd": [x["usd_cashflow"] for x in timeline]},
+        x="date",
+    )
     st.dataframe(timeline, use_container_width=True)
+
+    st.markdown(
+        "Mechanics are shown from the **USD-receiver / HUF-payer** perspective. "
+        "Positive cashflows are received by the USD leg receiver."
+    )
+
+    learning_hint(
+        "Focus on how the basis spread modifies the HUF leg coupon. The basis drag metric "
+        "tells you exactly how many bps of extra cost the basis adds to synthetic funding. "
+        "Try changing the scenario to see how stress widens this drag."
+    )
+
+    # --- Calculation windows ---
+    render_calculation_windows(
+        [
+            CalculationWindow(
+                "Synthetic USD (no basis)",
+                r"r=\frac{\frac{1+r_{HUF}T}{F/S}-1}{T}",
+                f"$S={spot:.4f}, F={forward:.4f}, r_{{HUF}}={huf_rate:.4%}$",
+                ("Positive rate = higher funding cost.",),
+                result=f"{out['synthetic_usd_rate_no_basis']:.4%}",
+            ),
+            CalculationWindow(
+                "Synthetic USD (with basis)",
+                r"r=\frac{\frac{1+(r_{HUF}+b)T}{F/S}-1}{T}",
+                f"$b={basis:.4%}$",
+                ("Positive basis increases HUF coupon.",),
+                result=f"{out['synthetic_usd_rate_with_basis']:.4%}",
+            ),
+            CalculationWindow(
+                "Basis drag",
+                r"(r_{with}-r_{no})\times 10{,}000",
+                f"$({out['synthetic_usd_rate_with_basis']:.6f}-{out['synthetic_usd_rate_no_basis']:.6f})\times10,000$",
+                ("Positive drag means worse synthetic funding.",),
+                result=f"{out['basis_drag_bp']:.2f} bp",
+            ),
+        ]
+    )
+
+    # --- Pedagogical footer ---
+    render_page_footer(1)
     st.write("Mechanics are shown from the USD-receiver / HUF-payer perspective.")
     learning_hint("Positive cashflows are received by the USD leg receiver.")
     sign_context = SignConventionContext(

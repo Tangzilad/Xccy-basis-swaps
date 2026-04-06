@@ -98,6 +98,23 @@ def _build_streamlit_stub() -> types.ModuleType:
     stub.number_input = lambda label, **k: k.get("value", 1.0)
     stub.selectbox = lambda label, options, index=0, **k: options[index]
     stub.columns = lambda n, *a, **k: [_Ctx() for _ in range(n if isinstance(n, int) else len(n))]
+    stub.expander = lambda *a, **k: _Ctx()
+    stub.button = lambda *a, **k: False
+    stub.text_input = lambda *a, **k: k.get("value", "")
+    stub.error = lambda *a, **k: None
+    stub.warning = lambda *a, **k: None
+    stub.progress = lambda *a, **k: None
+    stub.radio = lambda label, options, index=0, **k: options[index]
+
+    sidebar = _Ctx()
+    sidebar.markdown = lambda *a, **k: None
+    sidebar.caption = lambda *a, **k: None
+    sidebar.radio = lambda label, options, index=0, **k: options[index]
+    sidebar.selectbox = lambda label, options, index=0, **k: options[index] if options else None
+    sidebar.slider = lambda label, min_value=0, max_value=1, value=0.5, *a, **k: value
+    sidebar.button = lambda *a, **k: False
+    sidebar.progress = lambda *a, **k: None
+    stub.sidebar = sidebar
     stub.expander = _record_expander
     stub.text_area = _record_text_area
     stub.button = _record_button
@@ -115,10 +132,35 @@ def _build_ui_shell_stub() -> types.ModuleType:
         "5. Persistence / XVA / arbitrage limits",
         "6. Hedged pickup and hedge choice",
         "7. HUF/USD strategy and stress lab",
+        "8. Consolidated dashboard",
+        "9. Glossary",
     ]
     shell.learning_hint = lambda *a, **k: None
     shell.render_global_shell = lambda *a, **k: None
+    shell.ensure_market_state_initialized = lambda *a, **k: None
     return shell
+
+
+def _build_shared_page_helpers_stub() -> types.ModuleType:
+    helpers = types.ModuleType("shared_page_helpers")
+    helpers.get_market_params = lambda ss: {
+        "spot_fx": float(ss.get("spot_fx", 365.0)),
+        "usd_rate": float(ss.get("base_rate", 4.25)) / 100.0,
+        "huf_rate": float(ss.get("quote_rate", 5.0)) / 100.0,
+        "basis_bps": float(ss.get("cross_currency_basis_bps", -22.0)),
+    }
+    helpers.get_funding_params = lambda ss: {
+        **helpers.get_market_params(ss),
+        "extra_spread_bps": 12.0,
+    }
+    helpers.as_decimal = lambda v: v / 100.0 if v > 1 else v
+    helpers.from_decimal = lambda v: v * 100.0 if v < 1 else v
+    helpers.render_learning_objectives = lambda *a, **k: None
+    helpers.render_key_takeaways = lambda *a, **k: None
+    helpers.render_comprehension_checks = lambda *a, **k: None
+    helpers.render_page_header = lambda *a, **k: None
+    helpers.render_page_footer = lambda *a, **k: None
+    return helpers
 
 
 @pytest.mark.parametrize(
@@ -130,13 +172,17 @@ def _build_ui_shell_stub() -> types.ModuleType:
         "pages.5_Persistence_XVA_arbitrage_limits",
         "pages.6_Hedged_pickup_and_hedge_choice",
         "pages.7_HUF_USD_strategy_and_stress_lab",
+        "pages.8_Consolidated_dashboard",
+        "pages.9_Glossary",
     ],
 )
 def test_each_page_imports_and_renders_with_mocked_market_state(monkeypatch, module_name):
     stub = _build_streamlit_stub()
     shell_stub = _build_ui_shell_stub()
+    helpers_stub = _build_shared_page_helpers_stub()
     monkeypatch.setitem(sys.modules, "streamlit", stub)
     monkeypatch.setitem(sys.modules, "ui_shell", shell_stub)
+    monkeypatch.setitem(sys.modules, "shared_page_helpers", helpers_stub)
     sys.modules.pop(module_name, None)
 
     importlib.import_module(module_name)

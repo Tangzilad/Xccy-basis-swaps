@@ -1,5 +1,26 @@
 from __future__ import annotations
 
+import streamlit as st
+
+from shared_page_helpers import (
+    as_decimal,
+    from_decimal,
+    get_market_params,
+    render_page_footer,
+    render_page_header,
+)
+from src.analytics.parity import (
+    fair_value_comparison,
+    implied_huf_rate_from_spot_forward,
+    implied_usd_rate_from_spot_forward,
+    parity_decomposition,
+    tenor_ladder_decomposition,
+    tenor_to_year_fraction,
+)
+from src.state.session_access import get_canonical_market_context
+from streamlit_calc_helpers import CalculationWindow, render_required_calculation_windows
+from ui_shell import LEARNING_PATH, learning_hint, render_global_shell
+
 from src.analytics.parity import parity_decomposition, tenor_ladder_decomposition, tenor_to_year_fraction
 from src.state.session_access import get_canonical_market_context
 
@@ -11,6 +32,9 @@ WORKED_EXAMPLE = {
     "huf_rate": 6.85,
     "tenor": "1Y",
 }
+
+
+def render_page() -> None:
 REQUIRED_CALCULATION_WINDOWS: tuple[str, ...] = (
     "theoretical_forward",
     "implied_huf_rate",
@@ -43,6 +67,50 @@ def render_page() -> None:
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[2]
 
+    # --- Market context ---
+    summary = get_canonical_market_context(st.session_state)["summary_1y"]["base"]
+    spot_ctx = float(summary["spot_fx"])
+    usd_ctx = float(summary["usd_rate"])
+    huf_ctx = float(summary["huf_rate"])
+    basis_ctx = float(summary["basis_bps"]) / 10_000.0
+
+    # --- Header with learning objectives ---
+    render_page_header(2, "3. Parity Lab")
+    st.caption("Inputs and outputs follow HUF per USD FX quote convention.")
+
+    # --- Quick tenor overview (from canonical state) ---
+    st.markdown("### Tenor Overview")
+    rows = []
+    for t in [0.25, 0.5, 1.0, 2.0]:
+        obs = spot_ctx * (1 + (huf_ctx + basis_ctx) * t) / (1 + usd_ctx * t)
+        rows.append({"tenor": t, **fair_value_comparison(spot_ctx, obs, usd_ctx, huf_ctx, t)})
+    one = next(r for r in rows if r["tenor"] == 1.0)
+
+    a, b, c = st.columns(3)
+    a.metric("Observed 1Y", f"{one['observed_forward']:.4f}")
+    b.metric("Fair 1Y", f"{one['fair_forward_no_basis']:.4f}")
+    c.metric("Raw wedge", f"{one['raw_basis_wedge_bp']:.2f} bps")
+
+    st.line_chart(
+        {"tenor": [r["tenor"] for r in rows], "wedge": [r["raw_basis_wedge_bp"] for r in rows]},
+        x="tenor",
+    )
+
+    learning_hint(
+        "The chart above shows how the raw basis wedge evolves across tenors. "
+        "In CIP-perfect markets this line would be flat at zero. Deviations reveal "
+        "balance-sheet constraints or hedging demand imbalances."
+    )
+
+    # --- Interactive parity decomposition ---
+    st.markdown("### Interactive Decomposition")
+
+    m = get_market_params(st.session_state)
+    default_spot = float(m["spot_fx"])
+    default_usd = from_decimal(float(m["usd_rate"]))
+    default_huf = from_decimal(float(m["huf_rate"]))
+
+    if st.button("Load worked example (HUF/USD)"):
     st.title("3. Parity lab")
     context = get_canonical_market_context(st.session_state)
     base_summary = context["summary_1y"]["base"]
@@ -85,7 +153,6 @@ def render_page() -> None:
             index=TENOR_LADDER.index(st.session_state.get("parity_tenor", "1Y")),
             key="parity_tenor",
         )
-
     with right:
         usd_rate_pct = float(
             st.number_input(
@@ -116,6 +183,8 @@ def render_page() -> None:
         year_fraction=tenor_years,
     )
 
+    # --- Metrics ---
+    st.markdown("### Results")
     ladder = tenor_ladder_decomposition(
         spot_huf_per_usd=spot,
         usd_rate=usd_rate,
@@ -143,12 +212,25 @@ def render_page() -> None:
     c6.metric("Raw basis wedge", f"{breakdown['raw_basis_wedge_bp']:.2f} bp")
 
     st.markdown(
+        "**Sign convention (HUF per USD):** "
+        "A **positive** raw basis wedge means the observed forward is high vs no-basis CIP, "
+        "so implied HUF funding is richer (worse for synthetic USD borrowing via HUF). "
+        "A **negative** wedge means observed forward is low vs CIP and synthetic USD funding is cheaper."
+    )
+
+    # --- Tenor ladder ---
+    st.markdown("### Tenor Ladder")
+    ladder = tenor_ladder_decomposition(
+        spot_huf_per_usd=spot,
+        usd_rate=usd_rate,
+        huf_rate=huf_rate,
+        tenor_labels=TENOR_LADDER,
+        anchor_observed_forward=observed_forward,
+        anchor_tenor_label=tenor_label,
         "**Sign convention (HUF per USD):** A **positive** raw basis wedge means the observed forward "
         "is high vs no-basis CIP, so implied HUF funding is richer. A **negative** wedge means "
         "observed forward is low vs CIP and synthetic USD funding is cheaper."
     )
-
-    st.subheader("Tenor ladder")
     st.line_chart(
         {
             "tenor": [row["tenor"] for row in ladder],
@@ -180,8 +262,13 @@ def render_page() -> None:
     )
     st.write("Observed forwards are benchmarked versus no-basis CIP fair values.")
 
-    learning_hint("Persistent wedge signals parity stress.")
+    learning_hint(
+        "Compare the two forward curves above. Where they diverge most is where basis "
+        "pressure is greatest. Ask yourself: is the wedge driven by rate differentials, "
+        "FX supply-demand, or balance-sheet constraints?"
+    )
 
+    # --- Calculation windows ---
     calc_windows = {
         "theoretical_forward": CalculationWindow(
             title="Theoretical forward",
@@ -258,6 +345,16 @@ def render_page() -> None:
             result=f"{breakdown['implied_usd_rate']:.4%}",
         ),
         "friction_adjusted_arbitrage_band": CalculationWindow(
+            "Friction-adjusted arbitrage band",
+            r"\text{Net edge}=\text{Raw wedge}-\text{Frictions}",
+            "Friction inputs are not modelled on this page; interpret raw wedge before costs.",
+            result="See page 5",
+        ),
+        "hedged_pickup": CalculationWindow(
+            "Hedged pickup",
+            r"\text{Pickup}=\text{Carry}-\text{Hedge costs}",
+            "Carry and hedge implementation are shown in page 6.",
+            result="See page 6",
             title="Friction-adjusted arbitrage band",
             concept_meaning="Net tradable edge after subtracting implementation frictions.",
             why_it_matters="Distinguishes visible wedge from actionable opportunity.",
@@ -292,6 +389,10 @@ def render_page() -> None:
             result=f"{observed_forward / spot:.6f}",
         ),
         "stressed_vs_base_deltas": CalculationWindow(
+            "Stressed vs base deltas",
+            r"\Delta x = x_{stress}-x_{base}",
+            "This page displays current-state decomposition only.",
+            result="See page 7",
             title="Stressed vs base deltas",
             concept_meaning="Scenario-change metric between stress and baseline states.",
             why_it_matters="Supports attribution when moving from diagnosis to stress testing.",
@@ -315,6 +416,9 @@ def render_page() -> None:
     )
     render_shared_sign_convention(sign_context)
     render_required_calculation_windows(calc_windows, default_expanded=False, sign_convention=sign_context)
+
+    # --- Pedagogical footer ---
+    render_page_footer(2)
 
 
 if __name__ == "__main__":
