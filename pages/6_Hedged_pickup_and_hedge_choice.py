@@ -16,35 +16,6 @@ from src.analytics.hedging import (
 )
 
 
-def _get_market_state(session_state: dict) -> dict:
-    ms = session_state.get("market_state")
-    if isinstance(ms, dict) and "base_snapshot" in ms:
-        summary = get_canonical_market_context(session_state)["summary_1y"]["base"]
-        return {
-            "spot_fx": float(summary["spot_fx"]),
-            "usd_rate": float(summary["usd_rate"]),
-            "huf_rate": float(summary["huf_rate"]),
-            "basis_bps": float(summary["basis_bps"]),
-        }
-    if isinstance(ms, dict):
-        return ms
-    if ms is not None:
-        return {
-            "spot_fx": float(getattr(ms, "spot_fx", session_state.get("spot_fx", 365.0))),
-            "usd_rate": float(ms.huf_usd_curves["usd"].iloc[0]["usd_zero_rate"]),
-            "huf_rate": float(ms.huf_usd_curves["huf"].iloc[0]["huf_zero_rate"]),
-            "basis_bps": float(ms.basis_curve.iloc[0]["basis_bps"]),
-        }
-    fallback = {
-        "spot_fx": float(session_state.get("spot_fx", 365.0)),
-        "usd_rate": float(session_state.get("base_rate", 4.25)) / 100.0,
-        "huf_rate": float(session_state.get("quote_rate", 5.0)) / 100.0,
-        "basis_bps": float(session_state.get("cross_currency_basis_bps", -22)),
-    }
-    session_state["market_state"] = fallback
-    return fallback
-
-
 def render_page() -> None:
     import streamlit as st
     from streamlit_calc_helpers import CalculationWindow, render_calculation_windows
@@ -76,8 +47,12 @@ def render_page() -> None:
     st.line_chart({"hedge_cost": [r['hedge_cost'] for r in rows], "pickup": [r['pickup'] for r in rows], "benefit_of_rolling": [r['benefit_of_rolling_bp'] for r in rows]}, x="hedge_cost")
     st.dataframe(rows, use_container_width=True)
     render_global_shell(); st.session_state.suggested_page = LEARNING_PATH[5]
-    m=_get_market_state(st.session_state)
-    spot,usd,huf,basis=float(m["spot_fx"]),float(m["usd_rate"]),float(m["huf_rate"]),float(m["basis_bps"])
+    context = get_canonical_market_context(st.session_state)
+    base_summary = context["summary_1y"]["base"]
+    spot = float(base_summary["spot_fx"])
+    usd = float(base_summary["usd_rate"])
+    huf = float(base_summary["huf_rate"])
+    basis = float(base_summary["basis_bps"])
     fwd=spot*(1+huf)/(1+usd)
     simple_cf_payload = conversion_factor_simple(spot, fwd)
     simple_cf = float(simple_cf_payload["conversion_factor"])

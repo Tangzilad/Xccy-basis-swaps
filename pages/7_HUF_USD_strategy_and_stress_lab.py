@@ -9,7 +9,6 @@ from src.analytics.xccy_swap import synthetic_funding_cost_outputs
 from src.state.session_access import get_canonical_market_context
 
 
-
 def _compute_metrics(snapshot: dict) -> dict:
     usd_df = snapshot["usd_curve_df"].set_index("tenor")
     huf_df = snapshot["huf_curve_df"].set_index("tenor")
