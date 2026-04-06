@@ -260,6 +260,72 @@ def summarize_for_shell(snapshot: Mapping[str, Any]) -> dict[str, float]:
     }
 
 
+def apply_shell_patch(state: Mapping[str, Any], patch: Mapping[str, Any]) -> dict[str, Any]:
+    """Apply sidebar control patch to canonical state via one deterministic path."""
+    st = ensure_market_state(state)
+    next_state = ensure_market_state(st)
+    base = deepcopy(next_state["base_snapshot"])
+
+    one_y = "1Y"
+
+    if "spot_fx" in patch:
+        base["spot_fx"] = float(np.clip(float(patch["spot_fx"]), *_SPOT_RANGE))
+
+    if "base_rate" in patch:
+        usd_curve = base["usd_curve_df"].copy()
+        idx = usd_curve["tenor"] == one_y
+        if idx.any():
+            target = float(patch["base_rate"]) / 100.0
+            shift = target - float(usd_curve.loc[idx, "usd_zero_rate"].iloc[0])
+            usd_curve.loc[:, "usd_zero_rate"] = usd_curve["usd_zero_rate"] + shift
+            usd_curve.loc[:, "discount_factor"] = np.exp(-usd_curve["usd_zero_rate"] * usd_curve["years"])
+            base["usd_curve_df"] = usd_curve
+
+    if "quote_rate" in patch:
+        huf_curve = base["huf_curve_df"].copy()
+        idx = huf_curve["tenor"] == one_y
+        if idx.any():
+            target = float(patch["quote_rate"]) / 100.0
+            shift = target - float(huf_curve.loc[idx, "huf_zero_rate"].iloc[0])
+            huf_curve.loc[:, "huf_zero_rate"] = huf_curve["huf_zero_rate"] + shift
+            huf_curve.loc[:, "discount_factor"] = np.exp(-huf_curve["huf_zero_rate"] * huf_curve["years"])
+            base["huf_curve_df"] = huf_curve
+
+    if "cross_currency_basis_bps" in patch:
+        basis_curve = base["basis_curve_df"].copy()
+        idx = basis_curve["tenor"] == one_y
+        if idx.any():
+            target_basis = float(patch["cross_currency_basis_bps"])
+            shift = target_basis - float(basis_curve.loc[idx, "basis_bps"].iloc[0])
+            basis_curve.loc[:, "basis_bps"] = basis_curve["basis_bps"] + shift
+            basis_curve.loc[:, "implied_basis_decimal"] = basis_curve["basis_bps"] / 1e4
+            base["basis_curve_df"] = basis_curve
+
+    if "regime_name" in patch:
+        regime_name = str(patch["regime_name"])
+        current_regime = next_state["regime"]
+        preset_regimes = {
+            "calm": {**current_regime, "name": "calm", "level": -0.45, "slope": -0.15, "curvature": 0.05, "noise_scale": 0.7},
+            "baseline": {**current_regime, "name": "baseline", "level": 0.0, "slope": 0.0, "curvature": 0.0, "noise_scale": 1.0},
+            "stress": {**current_regime, "name": "stress", "level": 0.9, "slope": 0.25, "curvature": 0.25, "noise_scale": 1.6},
+        }
+        next_state["regime"] = clip_regime(preset_regimes.get(regime_name, preset_regimes["baseline"]))
+
+    base = _validate_snapshot(base)
+    next_state["base_snapshot"] = base
+    next_state["stressed_snapshot"] = deepcopy(base)
+    next_state["scenario"] = "none"
+
+    if "selected_scenario" in patch:
+        next_state["scenario"] = str(patch["selected_scenario"])
+    if "role" in patch:
+        next_state["user_role"] = str(patch["role"])
+    if "learning_mode" in patch:
+        next_state["learning_mode"] = str(patch["learning_mode"])
+
+    return next_state
+
+
 def make_stress_table(base_snapshot: Mapping[str, Any], stressed_snapshot: Mapping[str, Any]) -> pd.DataFrame:
     merged = base_snapshot["basis_curve_df"][["tenor", "basis_bps"]].merge(
         stressed_snapshot["basis_curve_df"][["tenor", "basis_bps"]],
@@ -278,5 +344,6 @@ __all__ = [
     "ensure_market_state",
     "make_stress_table",
     "regenerate_market_state",
+    "apply_shell_patch",
     "summarize_for_shell",
 ]
