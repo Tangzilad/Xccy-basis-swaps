@@ -6,6 +6,7 @@ from src.analytics.funding import all_in_funding_decomposition
 from src.analytics.hedging import hedged_pickup_decomposition_bp, matched_vs_rolling_hedge_economics_bp
 from src.analytics.parity import fair_value_comparison
 from src.analytics.xccy_swap import synthetic_funding_cost_outputs
+from src.explainers.theory_panels import render_pedagogical_scaffold
 from src.state.session_access import get_canonical_market_context
 
 
@@ -109,6 +110,23 @@ def render_page() -> None:
     st.set_page_config(page_title="7. HUF/USD strategy and stress lab", page_icon="📘", layout="wide")
     render_global_shell()
     st.session_state.suggested_page = LEARNING_PATH[6]
+    st.title("7. HUF/USD strategy and stress lab")
+    render_pedagogical_scaffold(
+        st,
+        page_number=7,
+        learning_path=LEARNING_PATH,
+        quantitative_outputs=(
+            "Base vs stressed CIP wedge",
+            "Base vs stressed funding gap and friction-adjusted edge",
+            "Base vs stressed hedged pickup",
+            "Preferred hedge under stress",
+        ),
+        derivation_items=(
+            ("State comparison construction", "Compute the same metric stack on base and stressed snapshots."),
+            ("Stress delta extraction", "Report stressed minus base differences for decision variables."),
+            ("Decision framing", "Use edge, pickup, and hedge preference jointly before committing capital."),
+        ),
+    )
 
     context = get_canonical_market_context(st.session_state)
     base_snapshot = context["base_snapshot"]
@@ -136,7 +154,6 @@ def render_page() -> None:
         },
     ]
 
-    st.title("7. HUF/USD strategy and stress lab")
     st.caption(f"Scenario: {context['state'].get('scenario', 'none')}")
     a, b, c = st.columns(3)
     a.metric("Δ CIP wedge", f"{sm['parity']['raw_basis_wedge_bp'] - bm['parity']['raw_basis_wedge_bp']:.2f} bps")
@@ -165,45 +182,87 @@ def render_page() -> None:
 
     render_calculation_windows([
         CalculationWindow(
-            "Stressed CIP wedge",
-            r"(r_{HUF}^{impl}-r_{HUF})\times10{,}000",
-            f"$S={sm['spot']:.4f}, F_{{mkt,1Y}}={sm['forward']:.4f}$",
-            ("Uses observed market forward tenor instead of a constructed forward.",),
+            title="Stressed CIP wedge",
+            concept_meaning="Parity wedge under stressed market forward and rates.",
+            why_it_matters="Primary stress indicator for cross-currency dislocation.",
+            formula=r"(r_{HUF}^{impl}-r_{HUF})\times10{,}000",
+            methodology_rationale="Recover implied HUF funding from stressed spot-forward parity.",
+            inputs_used="Stressed spot, stressed observed forward, stressed rates, 1Y tenor.",
+            substituted_values=f"$S={sm['spot']:.4f}, F_{{mkt,1Y}}={sm['forward']:.4f}$",
+            derivation_steps=("Compute implied HUF rate from stressed parity.", "Subtract stressed curve HUF rate.", "Convert to bps.",),
+            assumptions=("Observed forward reflects executable stressed market conditions.",),
+            interpretation="Larger absolute wedge indicates stronger parity stress.",
+            common_misunderstandings=("Using model forward instead of stressed observed forward.",),
             result=f"{sm['parity']['raw_basis_wedge_bp']:.2f} bps",
         ),
         CalculationWindow(
-            "Stressed funding transformation",
-            r"\Delta r = r_{syn,dom} - r_{dir,dom}",
-            f"${sm['funding']['synthetic_all_in']:.6f}-{sm['funding']['domestic_all_in']:.6f}$",
-            ("Positive means synthetic HUF funding is less economical than direct.",),
+            title="Stressed funding transformation",
+            concept_meaning="Stress-state funding route comparison for domestic currency.",
+            why_it_matters="Identifies whether route preference flips under stress.",
+            formula=r"\Delta r = r_{syn,dom} - r_{dir,dom}",
+            methodology_rationale="Compare synthetic and direct all-in funding in stressed state.",
+            inputs_used="Stressed synthetic and direct all-in domestic rates.",
+            substituted_values=f"${sm['funding']['synthetic_all_in']:.6f}-{sm['funding']['domestic_all_in']:.6f}$",
+            derivation_steps=("Build stressed synthetic all-in rate.", "Build stressed domestic all-in rate.", "Take difference.",),
+            assumptions=("Both routes share comparable maturity and compounding.",),
+            interpretation="Positive means synthetic HUF funding is less economical than direct.",
+            common_misunderstandings=("Assuming base-state ranking survives stress unchanged.",),
             result=f"{sm['funding']['cross_market_gap'] * 10_000:.2f} bps",
         ),
         CalculationWindow(
-            "Stressed friction-adjusted edge",
-            r"\text{CIP wedge}-\text{Friction}",
-            f"${sm['frictions']['raw_edge_bp']:.2f}-{sm['frictions']['total_friction_bp']:.2f}$",
-            ("Actionable only if absolute wedge exceeds friction band.",),
+            title="Stressed friction-adjusted edge",
+            concept_meaning="Residual stressed dislocation after implementation frictions.",
+            why_it_matters="Separates visible dislocation from executable opportunity.",
+            formula=r"\text{CIP wedge}-\text{Friction}",
+            methodology_rationale="Net raw stressed edge by stressed friction band estimate.",
+            inputs_used="Stressed raw edge and total friction in bps.",
+            substituted_values=f"${sm['frictions']['raw_edge_bp']:.2f}-{sm['frictions']['total_friction_bp']:.2f}$",
+            derivation_steps=("Measure stressed raw edge.", "Estimate stressed friction total.", "Subtract to obtain net edge.",),
+            assumptions=("Friction proxies remain informative in stress.",),
+            interpretation="Actionable only if absolute wedge exceeds friction band.",
+            common_misunderstandings=("Acting on raw edge without friction adjustment.",),
             result=f"{sm['frictions']['net_edge_bp']:.2f} bps",
         ),
         CalculationWindow(
-            "Stressed conversion factor",
-            r"CF_{curve}=\sum_i w_i(F_i/S)",
-            f"$CF_{{simple}}={sm['conversion_factor_simple']:.6f},\\;CF_{{curve}}={sm['conversion_factor_curve']:.6f}$",
-            ("Curve-aware CF uses observed forward ladder and tenor-weighting.",),
+            title="Stressed conversion factor",
+            concept_meaning="Stress-state conversion mapping between quote spaces.",
+            why_it_matters="Impacts translated pickup and hedge metrics under stress.",
+            formula=r"CF_{curve}=\sum_i w_i(F_i/S)",
+            methodology_rationale="Recompute weighted forward/spot mapping with stressed ladder.",
+            inputs_used="Stressed spot, forward ladder, and tenor weights.",
+            substituted_values=f"$CF_{{simple}}={sm['conversion_factor_simple']:.6f},\\;CF_{{curve}}={sm['conversion_factor_curve']:.6f}$",
+            derivation_steps=("Compute stressed simple CF.", "Compute stressed curve-aware CF.", "Compare translation implications.",),
+            assumptions=("Weights remain representative for stressed hedging horizon.",),
+            interpretation="Gap versus simple CF shows curve-shape stress contribution.",
+            common_misunderstandings=("Treating CF as invariant across scenarios.",),
             result=f"{sm['conversion_factor_curve']:.6f}",
         ),
         CalculationWindow(
-            "Stressed hedged pickup",
-            r"\text{Net}=\text{Gross}-\text{Hedge}-\text{Basis}-\text{Extra}",
-            f"${sm['pickup']['gross_pickup_bp']:.2f}-{sm['pickup']['hedge_cost_bp']:.2f}-{sm['pickup']['basis_drag_bp']:.2f}-{sm['pickup']['extra_friction_bp']:.2f}$",
-            ("Positive pickup remains attractive after implementation costs.",),
+            title="Stressed hedged pickup",
+            concept_meaning="Net stressed carry after hedging and friction costs.",
+            why_it_matters="Directly indicates strategy attractiveness in stress.",
+            formula=r"\text{Net}=\text{Gross}-\text{Hedge}-\text{Basis}-\text{Extra}",
+            methodology_rationale="Subtract each stressed cost channel from stressed gross pickup.",
+            inputs_used="Stressed gross pickup, hedge cost, basis drag, extra friction (bps).",
+            substituted_values=f"${sm['pickup']['gross_pickup_bp']:.2f}-{sm['pickup']['hedge_cost_bp']:.2f}-{sm['pickup']['basis_drag_bp']:.2f}-{sm['pickup']['extra_friction_bp']:.2f}$",
+            derivation_steps=("Start with stressed gross pickup.", "Subtract stressed hedge+basis terms.", "Subtract extra frictions.",),
+            assumptions=("Additive bps decomposition is valid under stress magnitude.",),
+            interpretation="Positive pickup remains attractive after implementation costs.",
+            common_misunderstandings=("Reading gross pickup without stress cost channels.",),
             result=f"{sm['pickup']['net_hedged_pickup_bp']:.2f} bps",
         ),
         CalculationWindow(
-            "Stressed preferred hedge choice",
-            r"\text{choose rolling if } C_m-(C_r+\lambda\sigma)>0",
-            f"$C_m={sm['hedge_choice']['matched_cost_bp']:.2f}, C_r={sm['hedge_choice']['expected_rolling_cost_bp']:.2f}, \\sigma={sm['hedge_choice']['roll_risk_proxy_bp']:.2f}$",
-            ("Compares matched cost against risk-adjusted rolling alternative.",),
+            title="Stressed preferred hedge choice",
+            concept_meaning="Stress-state decision between matched and rolling hedge implementation.",
+            why_it_matters="Hedge preference can flip under volatility and spread shocks.",
+            formula=r"\text{choose rolling if } C_m-(C_r+\lambda\sigma)>0",
+            methodology_rationale="Compare matched cost with risk-adjusted rolling cost.",
+            inputs_used="Stressed matched cost, expected rolling cost, roll-risk proxy, risk aversion.",
+            substituted_values=f"$C_m={sm['hedge_choice']['matched_cost_bp']:.2f}, C_r={sm['hedge_choice']['expected_rolling_cost_bp']:.2f}, \\sigma={sm['hedge_choice']['roll_risk_proxy_bp']:.2f}$",
+            derivation_steps=("Compute RA rolling cost C_r+λσ.", "Compare with matched cost C_m.", "Choose lower risk-adjusted option.",),
+            assumptions=("Risk-aversion setting reflects mandate.",),
+            interpretation="Choice summarizes stress-adjusted implementation preference.",
+            common_misunderstandings=("Selecting lowest expected cost without risk adjustment.",),
             result=f"{str(sm['hedge_choice']['preferred_hedge']).title()}",
         ),
     ], sign_convention=sign_context)
